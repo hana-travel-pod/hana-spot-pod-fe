@@ -1,0 +1,17 @@
+{
+  "expo": {
+    "name": "hana spot pod",
+    "slug": "hana-spot-pod",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#FFFFFF",
+    "ios": { "supportsTablet": false },
+    "android": { "package": "com.hana.spotpod" },
+    "web": {
+      "bundler": "metro",
+      "name": "hana spot pod",
+      "description": "좋은 여행은, 좋은 동행에서. 함께 떠날 여행 팟을 찾아보세요."
+    }
+  }
+}
