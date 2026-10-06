@@ -1,0 +1,165 @@
+import { CandidateItem } from '../types';
+
+export const CATALOG: CandidateItem[] = [
+  // ── 식사 ─────────────────────────────────────────────────────────
+  {
+    id: 'dining-1',
+    name: '쿠로몬 시장 해산물 런치 세트',
+    description: '오사카 대표 시장에서 신선한 해산물 모둠 런치',
+    category: 'dining',
+    totalPrice: 56_000,
+    highlight: '4인 가볍게 즐기기',
+  },
+  {
+    id: 'dining-2',
+    name: '도톤보리 야키니쿠 특별 저녁',
+    description: '도톤보리 거리 프리미엄 야키니쿠 코스 디너',
+    category: 'dining',
+    totalPrice: 240_000,
+    highlight: '가장 인기 있는 선택',
+  },
+  {
+    id: 'dining-3',
+    name: '오사카 특선 스시 코스',
+    description: '현지 유명 스시 바 오마카세 스타일 코스',
+    category: 'dining',
+    totalPrice: 380_000,
+    highlight: '특별한 미식 경험',
+  },
+  {
+    id: 'dining-over',
+    name: '미쉐린 스타 오마카세 디너',
+    description: '오사카 미쉐린 스타 레스토랑 단독 예약',
+    category: 'dining',
+    totalPrice: 520_000,
+    highlight: '최상급 다이닝',
+  },
+
+  // ── 숙소 업그레이드 ──────────────────────────────────────────────
+  {
+    id: 'acc-1',
+    name: '디럭스룸 1박 업그레이드',
+    description: '현재 예약 방에서 디럭스 타입으로 1박 업그레이드',
+    category: 'accommodation',
+    totalPrice: 80_000,
+    highlight: '편안한 숙면 보장',
+  },
+  {
+    id: 'acc-2',
+    name: '슈피리어 스위트 2박 업그레이드',
+    description: '도심 호텔 슈피리어 스위트룸으로 2박 업그레이드',
+    category: 'accommodation',
+    totalPrice: 200_000,
+    highlight: '넓은 공간과 도심 뷰',
+  },
+  {
+    id: 'acc-3',
+    name: '난바 프리미엄 호텔 4박 업그레이드',
+    description: '난바 중심지 4성급 호텔로 여행 전 기간 업그레이드',
+    category: 'accommodation',
+    totalPrice: 360_000,
+    highlight: '입지 최고, 이동 편리',
+  },
+  {
+    id: 'acc-over',
+    name: '오사카 5성급 호텔 스위트 업그레이드',
+    description: '오사카 최고급 5성급 호텔 스위트룸 전환',
+    category: 'accommodation',
+    totalPrice: 480_000,
+    highlight: '최고급 숙박',
+  },
+
+  // ── 공연 ─────────────────────────────────────────────────────────
+  {
+    id: 'perf-1',
+    name: '오사카 전통 만자이 공연 관람',
+    description: '도톤보리 소극장에서 일본 전통 만담 공연 감상',
+    category: 'performance',
+    totalPrice: 64_000,
+    highlight: '일본 전통 문화 체험',
+  },
+  {
+    id: 'perf-2',
+    name: '오사카 성 야경 투어 & 전통 공연',
+    description: '오사카 성 야간 개방과 전통 예능 공연 패키지',
+    category: 'performance',
+    totalPrice: 280_000,
+    highlight: '야경과 문화가 어우러진 밤',
+  },
+  {
+    id: 'perf-over',
+    name: 'USJ 나이트 이벤트 익스클루시브 패키지',
+    description: '유니버설 스튜디오 야간 전용 익스클루시브 이벤트',
+    category: 'performance',
+    totalPrice: 560_000,
+    highlight: '익스클루시브 나이트',
+  },
+
+  // ── 액티비티 ─────────────────────────────────────────────────────
+  {
+    id: 'act-1',
+    name: '도톤보리 유람선 & 거리 탐방 투어',
+    description: '유람선으로 오사카 수로를 탐방하고 주요 스팟 방문',
+    category: 'activity',
+    totalPrice: 48_000,
+    highlight: '물 위에서 보는 오사카',
+  },
+  {
+    id: 'act-2',
+    name: '오코노미야키 요리 교실',
+    description: '현지 셰프에게 배우는 오사카식 오코노미야키 만들기',
+    category: 'activity',
+    totalPrice: 120_000,
+    highlight: '직접 만드는 오사카 맛',
+  },
+  {
+    id: 'act-3',
+    name: '오사카 자전거 시티 투어',
+    description: '전문 가이드와 함께하는 오사카 4시간 자전거 투어',
+    category: 'activity',
+    totalPrice: 240_000,
+    highlight: '현지인처럼 누비는 오사카',
+  },
+  {
+    id: 'act-over',
+    name: '헬리콥터 오사카 야경 투어',
+    description: '헬리콥터로 오사카 전경을 감상하는 특별 투어',
+    category: 'activity',
+    totalPrice: 480_000,
+    highlight: '하늘 위 오사카',
+  },
+
+  // ── 쇼핑 ─────────────────────────────────────────────────────────
+  {
+    id: 'shop-1',
+    name: '한큐 백화점 공동 기념품 구매',
+    description: '우메다 한큐 백화점 4인 기념품 공동 구매 예산',
+    category: 'shopping',
+    totalPrice: 72_000,
+    highlight: '소중한 여행 기념품',
+  },
+  {
+    id: 'shop-2',
+    name: '돈키호테 그룹 쇼핑 바우처',
+    description: '난바 돈키호테 그룹 쇼핑 바우처 + 면세 통합 서비스',
+    category: 'shopping',
+    totalPrice: 160_000,
+    highlight: '인기 아이템 한가득',
+  },
+  {
+    id: 'shop-3',
+    name: '오사카 전통 공예품 세트 구매',
+    description: '오사카 전통 도자기와 공예품 4인 합산 구매 패키지',
+    category: 'shopping',
+    totalPrice: 320_000,
+    highlight: '오래 기억할 특별 기념품',
+  },
+  {
+    id: 'shop-over',
+    name: '면세점 럭셔리 브랜드 그룹 패키지',
+    description: '면세점 럭셔리 브랜드 4인 공동 구매 패키지',
+    category: 'shopping',
+    totalPrice: 480_000,
+    highlight: '프리미엄 쇼핑',
+  },
+];

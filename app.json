@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "hana-spotpod",
+    "name": "하나픽",
     "slug": "hana-spotpod",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -20,6 +20,12 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-font",
+      "expo-router",
+      "expo-image"
+    ],
+    "scheme": "hanapick"
   }
 }
