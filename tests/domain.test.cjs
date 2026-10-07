@@ -12,6 +12,9 @@ const {
   discussionStatus,
   canSubmit,
   canConfirm,
+  canRequestInvestment,
+  totalInvestmentAmount,
+  hasVoteChanges,
   proposerName,
 } = require(process.env.HANA_DOMAIN_MODULE);
 const toggle = (state, planId) =>
@@ -81,12 +84,31 @@ test("all three discussion statuses are derived from votes", () => {
   assert.equal(discussionStatus(state, "dividend"), "low");
   assert.equal(discussionStatus(state, "hyundai"), "low");
 });
-test("repeated submission never increases counts and submitted choices are locked", () => {
-  const state = submit(toggle(createInitialState(), "skhynix"));
-  assert.equal(submit(state), state);
-  assert.equal(toggle(state, "bond"), state);
-  assert.equal(toggle(state, "skhynix"), state);
-  assert.equal(voteCount(submit(submit(state)), "skhynix"), 3);
+test("repeated submission is idempotent and revised votes replace only the current member votes", () => {
+  const original = submit(toggle(createInitialState(), "skhynix"));
+  assert.equal(submit(original), original);
+  let revised = toggle(toggle(original, "skhynix"), "bond");
+  assert.equal(hasVoteChanges(revised), true);
+  assert.equal(voteCount(revised, "skhynix"), 3);
+  revised = submit(revised);
+  assert.equal(voteCount(revised, "skhynix"), 2);
+  assert.equal(voteCount(revised, "bond"), 3);
+  assert.deepEqual(revised.votes.filter((v) => v.memberId !== "m1"), INITIAL_VOTES);
+  assert.equal(hasVoteChanges(revised), false);
+  assert.equal(submit(revised), revised);
+});
+test("revision removes a candidate that falls below the strict threshold from confirmation targets", () => {
+  let state = receive(createInitialState(), LIVE_VOTE_EVENTS[0]);
+  state = submit(toggle(state, "bond"));
+  state = reduceDemo(state, { type: "toggleConfirmation", planId: "bond" });
+  assert.equal(canConfirm(state), true);
+  state = toggle(toggle(state, "bond"), "samsung");
+  assert.equal(canConfirm(state), false);
+  state = submit(state);
+  assert.equal(voteCount(state, "bond"), 3);
+  assert.equal(isCandidate(state, "bond"), false);
+  assert.deepEqual(state.confirmationPlanIds, []);
+  assert.equal(canConfirm(state), false);
 });
 test("existing member vote cannot be duplicated", () => {
   const initial = createInitialState([
@@ -189,4 +211,44 @@ test("live demo keeps one AI and one member candidate, three discussing and two 
       .length,
     2,
   );
+});
+
+function confirmedPair() {
+  let state = submit(toggle(createInitialState(), "sp500"));
+  state = reduceDemo(state, { type: "toggleConfirmation", planId: "sp500" });
+  return reduceDemo(state, { type: "toggleConfirmation", planId: "samsung" });
+}
+test("each selected candidate needs its own positive amount; request total equals only selected amounts", () => {
+  let state = confirmedPair();
+  assert.equal(canRequestInvestment(state), false);
+  state = reduceDemo(state, { type: "setInvestmentAmount", planId: "sp500", amount: 150000 });
+  assert.equal(canRequestInvestment(state), false);
+  state = reduceDemo(state, { type: "setInvestmentAmount", planId: "samsung", amount: 250000 });
+  assert.equal(canRequestInvestment(state), true);
+  assert.equal(totalInvestmentAmount(state), 400000);
+  state = reduceDemo(state, { type: "setInvestmentAmount", planId: "samsung", amount: 75000 });
+  assert.equal(totalInvestmentAmount(state), 225000);
+  state = reduceDemo(state, { type: "toggleConfirmation", planId: "samsung" });
+  assert.equal(totalInvestmentAmount(state), 150000);
+  assert.equal(canRequestInvestment(state), true);
+  state = reduceDemo(state, { type: "toggleConfirmation", planId: "samsung" });
+  assert.equal(state.investmentAmounts.samsung, 75000);
+  assert.equal(totalInvestmentAmount(state), 225000);
+});
+test("amount entry rejects negative, decimal, nonfinite, unknown and unselected inputs", () => {
+  const state = confirmedPair();
+  for (const amount of [-1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.equal(reduceDemo(state, { type: "setInvestmentAmount", planId: "sp500", amount }), state);
+  }
+  for (const planId of ["unknown", "bond"]) {
+    assert.equal(reduceDemo(state, { type: "setInvestmentAmount", planId, amount: 10000 }), state);
+  }
+  const cleared = reduceDemo(state, { type: "setInvestmentAmount", planId: "sp500", amount: 0 });
+  assert.equal(canRequestInvestment(cleared), false);
+});
+test("ordinary members cannot set an investment amount or request investment", () => {
+  const state = confirmedPair();
+  const config = { ...DEMO_CONFIG, currentMemberId: "m6" };
+  assert.equal(reduceDemo(state, { type: "setInvestmentAmount", planId: "sp500", amount: 10000 }, config), state);
+  assert.equal(canRequestInvestment(state, config), false);
 });

@@ -6,7 +6,6 @@ export type Pod = {
   name: string;
   investmentStyle: InvestmentStyle;
   availableAmount: number;
-  plannedInvestmentAmount: number;
   threshold: number;
   members: Member[];
 };
@@ -44,6 +43,7 @@ export type DemoState = {
   votes: Vote[];
   selectedPlanIds: string[];
   confirmationPlanIds: string[];
+  investmentAmounts: Record<string, number>;
   submitted: boolean;
   latestVote: Vote | null;
 };
@@ -57,9 +57,10 @@ export const DEMO_RULES = {
   maximumAiRecommendations: 3,
   simulateLiveVotes: false,
   liveVoteIntervalMs: 8000,
+  votingDurationSeconds: 2 * 60 * 60 + 30 * 60,
   maximumSelections: null as number | null,
   showExistingVotes: true,
-  allowVoteChangesAfterSubmission: false,
+  allowVoteChangesAfterSubmission: true,
   allowMultipleConfirmation: true,
 };
 export const POD: Pod = {
@@ -67,7 +68,6 @@ export const POD: Pod = {
   name: "차곡차곡 투자 모임",
   investmentStyle: "균형",
   availableAmount: 3000000,
-  plannedInvestmentAmount: 400000,
   threshold: 3,
   members: [
     { id: "m1", name: "김하나", isRepresentative: true },
@@ -110,20 +110,20 @@ export const AI_PLANS: InvestmentPlan[] = [
     assetType: "etf",
     source: "ai",
     id: "bond",
-    name: "국내 국채 3년",
+    name: "초단기 채권",
     code: "POD 002",
-    category: "국내 국채",
-    description: "만기 3년 내외의 국내 국채에 투자",
+    category: "원화 단기채",
+    description: "3개월 이내 우량 단기채 투자",
     risk: "낮은 위험",
     riskLevel: 5,
-    reason: "주식과 함께 담아 모임 자산의 변동성을 낮추는 데 도움을 줘요.",
+    reason: "여행 전 짧은 준비 기간을 고려해 만기가 짧은 채권을 살펴봐요.",
     features: [
-      "국내 국채 중심의 채권형 ETF",
-      "금리가 오르면 채권 가격이 하락할 수 있어요",
-      "채권형 상품도 원금 손실이 발생할 수 있어요",
+      "만기 3개월 이내의 우량 단기채 중심으로 구성해요",
+      "3년 만기 국채보다 금리 변동에 대한 노출 기간이 짧아요",
+      "단기채도 가격 변동과 원금 손실이 발생할 수 있어요",
     ],
     annualFee: "연 0.15%",
-    benchmark: "국고채 3년 지수",
+    benchmark: "원화 초단기 우량채 지수",
     manager: "하나자산운용 (예시)",
     currency: "원화",
   },
@@ -271,6 +271,7 @@ export function createInitialState(votes: Vote[] = INITIAL_VOTES): DemoState {
     votes: votes.map((v) => ({ ...v })),
     selectedPlanIds: [],
     confirmationPlanIds: [],
+    investmentAmounts: {},
     submitted: false,
     latestVote: null,
   };
@@ -313,10 +314,17 @@ export function discussionStatus(
     : "low";
 }
 export const DISCUSSION_LABELS: Record<DiscussionStatus, string> = {
-  confirmed: "✓ 후보 확정",
-  discussing: "↗ 논의 중",
-  low: "관심 낮음",
+  confirmed: "완료",
+  discussing: "진행 중",
+  low: "종료",
 };
+export function hasVoteChanges(state: DemoState, config = DEMO_CONFIG) {
+  const previous = new Set(
+    state.votes.filter((v) => v.memberId === config.currentMemberId).map((v) => v.planId),
+  );
+  const selected = new Set(state.selectedPlanIds);
+  return previous.size !== selected.size || [...selected].some((id) => !previous.has(id));
+}
 export function proposerName(plan: InvestmentPlan, config = DEMO_CONFIG) {
   return plan.source === "member"
     ? (config.pod.members.find((m) => m.id === plan.proposedBy)?.name ??
@@ -325,28 +333,47 @@ export function proposerName(plan: InvestmentPlan, config = DEMO_CONFIG) {
 }
 export function canSubmit(state: DemoState) {
   return (
-    !state.submitted &&
+    (!state.submitted || DEMO_RULES.allowVoteChangesAfterSubmission) &&
     state.selectedPlanIds.length >= DEMO_RULES.minimumSelections
   );
 }
 export function canConfirm(state: DemoState, config = DEMO_CONFIG) {
   return (
     state.submitted &&
+    !hasVoteChanges(state, config) &&
     !!currentMember(config)?.isRepresentative &&
     state.confirmationPlanIds.length > 0 &&
     state.confirmationPlanIds.every((id) => isCandidate(state, id, config))
   );
 }
+export function totalInvestmentAmount(state: DemoState) {
+  return state.confirmationPlanIds.reduce(
+    (total, id) => total + (state.investmentAmounts[id] ?? 0),
+    0,
+  );
+}
+export function canRequestInvestment(state: DemoState, config = DEMO_CONFIG) {
+  return canConfirm(state, config) && state.confirmationPlanIds.every((id) => {
+    const amount = state.investmentAmounts[id] ?? 0;
+    return Number.isSafeInteger(amount) && amount > 0;
+  }) && Number.isSafeInteger(totalInvestmentAmount(state));
+}
 export type Action =
   | { type: "toggleSelection"; planId: string }
   | { type: "submit" }
   | { type: "receiveVote"; vote: Vote }
+  | { type: "setInvestmentAmount"; planId: string; amount: number }
   | { type: "toggleConfirmation"; planId: string };
 export function reduceDemo(
   state: DemoState,
   action: Action,
   config = DEMO_CONFIG,
 ): DemoState {
+  if (action.type === "setInvestmentAmount") {
+    if (!canConfirm(state, config) || !state.confirmationPlanIds.includes(action.planId) ||
+      !Number.isSafeInteger(action.amount) || action.amount < 0) return state;
+    return { ...state, investmentAmounts: { ...state.investmentAmounts, [action.planId]: action.amount } };
+  }
   if (action.type === "receiveVote") {
     const vote = action.vote;
     if (
@@ -386,8 +413,9 @@ export function reduceDemo(
   }
   if (action.type === "submit") {
     if (!canSubmit(state) || !currentMember(config)) return state;
-    const votes = [...state.votes];
-    for (const id of state.selectedPlanIds) {
+    if (state.submitted && !hasVoteChanges(state, config)) return state;
+    const votes = state.votes.filter((v) => v.memberId !== config.currentMemberId);
+    for (const id of new Set(state.selectedPlanIds)) {
       if (
         config.plans.some((e) => e.id === id) &&
         !votes.some(
@@ -397,7 +425,11 @@ export function reduceDemo(
         votes.push({ memberId: config.currentMemberId, planId: id });
       }
     }
-    return { ...state, votes, submitted: true };
+    const next = { ...state, votes, submitted: true };
+    return {
+      ...next,
+      confirmationPlanIds: state.confirmationPlanIds.filter((id) => isCandidate(next, id, config)),
+    };
   }
   if (
     !state.submitted ||

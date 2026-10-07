@@ -4,6 +4,9 @@ import {
   Animated,
   BackHandler,
   Image,
+  ImageSourcePropType,
+  Keyboard,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -11,6 +14,7 @@ import {
   StatusBar,
   StyleSheet,
   Text,
+  TextInput,
   TextStyle,
   View,
   useWindowDimensions,
@@ -18,7 +22,10 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   canConfirm,
+  canRequestInvestment,
+  totalInvestmentAmount,
   canSubmit,
+  hasVoteChanges,
   createInitialState,
   currentMember,
   DEMO_CONFIG,
@@ -36,17 +43,60 @@ import {
   proposerName,
 } from "./domain";
 
-const C = {
-  green: "#008485",
-  dark: "#174344",
-  ink: "#202F30",
-  muted: "#647778",
-  mint: "#E7F4F4",
-  soft: "#B9C7C6",
-  accent: "#D5A24B",
-  line: "#E3EBEB",
-  bg: "#F5F8F8",
+import { palette as C } from "./theme";
+
+const STATUS_COLORS = {
+  confirmed: { text: C.green, background: C.mint, chart: C.green },
+  discussing: { text: "#8A6100", background: "#FFF1BA", chart: "#E4B52F" },
+  low: { text: C.muted, background: C.iconBackground, chart: C.muted },
 };
+const COMPANY_LOGOS: Record<string, ImageSourcePropType> = {
+  samsung: require("../reference/삼성전자.png"),
+  skhynix: require("../reference/SK하이닉스.png"),
+  naver: require("../reference/네이버.png"),
+  hyundai: require("../reference/현대자동차.png"),
+};
+function CompanyLogo({ plan, large = false }: { plan: InvestmentPlan; large?: boolean }) {
+  const source = COMPANY_LOGOS[plan.id];
+  if (!source) return null;
+  return (
+    <View style={[s.companyLogo, large && s.planIconLarge, plan.id === "hyundai" && { backgroundColor: C.dark }]}>
+      <Image source={source} style={{ width: large ? 54 : 38, height: large ? 46 : 30 }} resizeMode="contain" accessibilityLabel={`${plan.name} 로고`} />
+    </View>
+  );
+}
+function PlanIcon({ plan }: { plan: InvestmentPlan }) {
+  if (plan.source === "member") return <CompanyLogo plan={plan} large />;
+  return (
+    <View style={[s.companyLogo, s.planIconLarge, { backgroundColor: C.mint }]} accessible accessibilityLabel={`${plan.name} 아이콘`}>
+      {plan.id === "sp500" ? (
+        <View style={s.marketIcon}>
+          {[14, 23, 34].map((height, i) => <View key={height} style={{ width: 8, height, borderRadius: 2, backgroundColor: C.green, opacity: 0.5 + i * 0.25 }} />)}
+        </View>
+      ) : plan.id === "bond" ? (
+        <View style={s.clockIcon}>
+          <View style={s.clockHour} />
+          <View style={s.clockMinute} />
+        </View>
+      ) : (
+        <View style={s.coinIcon}>
+          <Copy kind="heading" style={{ color: C.green, fontSize: 23 }}>₩</Copy>
+        </View>
+      )}
+    </View>
+  );
+}
+function VotingTimer({ seconds }: { seconds: number }) {
+  const hours = String(Math.floor(seconds / 3600)).padStart(2, "0");
+  const minutes = String(Math.floor((seconds % 3600) / 60)).padStart(2, "0");
+  const remainder = String(seconds % 60).padStart(2, "0");
+  return (
+    <View style={s.timerInline} testID="voting-countdown">
+      <Copy kind="small" style={{ color: C.muted }}>남은 시간</Copy>
+      <Copy style={s.timerNumber}>{hours}:{minutes}:{remainder}</Copy>
+    </View>
+  );
+}
 type Screen =
   | { name: "list" }
   | { name: "detail"; planId: string }
@@ -90,7 +140,7 @@ function Button({
     >
       <Copy
         kind="label"
-        style={{ color: disabled ? "#738788" : "#FFFFFF", fontSize: 16 }}
+        style={{ color: C.bg, fontSize: 16 }}
       >
         {label}
       </Copy>
@@ -117,7 +167,7 @@ function Pill({
         style={{
           color:
             tone === "risk"
-              ? "#7A5843"
+              ? C.muted
               : tone === "neutral"
                 ? C.muted
                 : C.green,
@@ -157,6 +207,7 @@ function Selection({
       style={({ pressed }) => [
         s.selection,
         compact && s.compactSelection,
+        disabled && s.buttonDisabled,
         pressed && s.pressed,
       ]}
     >
@@ -189,27 +240,9 @@ function DiscussionBadge({
   const status = discussionStatus(state, plan.id);
   return (
     <View
-      style={[
-        s.discussionBadge,
-        status === "confirmed"
-          ? s.confirmedBadge
-          : status === "discussing"
-            ? s.discussingBadge
-            : s.lowBadge,
-      ]}
+      style={[s.discussionBadge, { backgroundColor: STATUS_COLORS[status].background }]}
     >
-      <Copy
-        kind="small"
-        style={{
-          fontFamily: "HanaBold",
-          color:
-            status === "confirmed"
-              ? C.green
-              : status === "discussing"
-                ? C.green
-                : C.muted,
-        }}
-      >
+      <Copy kind="small" style={{ fontFamily: "HanaMedium", color: STATUS_COLORS[status].text }}>
         {DISCUSSION_LABELS[status]}
       </Copy>
     </View>
@@ -227,6 +260,7 @@ function VoteStatus({
   showStatus?: boolean;
 }) {
   const count = voteCount(state, plan.id);
+  const color = STATUS_COLORS[discussionStatus(state, plan.id)].text;
   return (
     <View style={[s.statusRow, prominent && s.prominentStatus]}>
       {prominent ? (
@@ -235,8 +269,8 @@ function VoteStatus({
           accessible
           accessibilityLabel={`${plan.name}, 전체 ${DEMO_CONFIG.pod.members.length}명 중 ${count}명 찬성`}
         >
-          <Copy style={s.voteNumber}>{count}</Copy>
-          <Copy kind="label" style={{ color: C.green }}>
+          <Copy style={{ ...s.voteNumber, color }}>{count}</Copy>
+          <Copy kind="label" style={{ color }}>
             명 찬성
           </Copy>
           <Copy kind="small" style={{ color: C.muted }}>
@@ -245,7 +279,7 @@ function VoteStatus({
           </Copy>
         </View>
       ) : (
-        <Copy kind="small" style={{ fontFamily: "HanaMedium" }}>
+        <Copy kind="small" style={{ fontFamily: "HanaMedium", color }}>
           {count} / {DEMO_CONFIG.pod.members.length}명 투표
         </Copy>
       )}
@@ -271,6 +305,7 @@ function Card({
   selectable?: boolean;
 }) {
   return (
+    <View style={s.cardShadow}>
     <View
       style={[
         s.card,
@@ -293,13 +328,14 @@ function Card({
         onPress={onDetail}
         style={({ pressed }) => [s.cardBody, pressed && s.pressed]}
       >
-        <View style={s.row}>
-          <Copy kind="heading" style={{ flex: 1 }}>
-            {plan.name}
-          </Copy>
+        <View style={s.planContentRow}>
+          <PlanIcon plan={plan} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Copy kind="heading">{plan.name}</Copy>
+            <Copy kind="small" style={{ color: C.muted, marginTop: 5 }}>{plan.description}</Copy>
+          </View>
           <Copy style={{ color: C.muted, fontSize: 22 }}>›</Copy>
         </View>
-        <Copy style={{ color: C.muted, marginTop: 4 }}>{plan.description}</Copy>
       </Pressable>
       <View style={s.cardFooter}>
         {DEMO_RULES.showExistingVotes || state.submitted ? (
@@ -325,15 +361,16 @@ function Card({
         )}
       </View>
     </View>
+    </View>
   );
 }
-function Facts({ rows }: { rows: [string, string][] }) {
+function Facts({ rows, emphasizeValues = false }: { rows: [string, string][]; emphasizeValues?: boolean }) {
   return (
     <View style={s.facts}>
       {rows.map(([label, value]) => (
         <View style={s.fact} key={label}>
           <Copy style={{ color: C.muted, flex: 1 }}>{label}</Copy>
-          <Copy kind="label" style={{ flex: 1.4, textAlign: "right" }}>
+          <Copy kind="label" style={{ flex: 1.4, textAlign: "right", ...(emphasizeValues ? { fontFamily: "HanaBold", fontSize: 18, color: C.ink } : {}) }}>
             {value}
           </Copy>
         </View>
@@ -351,6 +388,14 @@ export function InvestmentApp() {
   );
   const [stack, setStack] = useState<Screen[]>([{ name: "list" }]);
   const [notice, setNotice] = useState(false);
+  const [votingEndsAt] = useState(() => Date.now() + DEMO_RULES.votingDurationSeconds * 1000);
+  const [remainingSeconds, setRemainingSeconds] = useState(DEMO_RULES.votingDurationSeconds);
+  useEffect(() => {
+    const tick = () => setRemainingSeconds(Math.max(0, Math.ceil((votingEndsAt - Date.now()) / 1000)));
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, [votingEndsAt]);
   const [requestDialog, setRequestDialog] = useState<"confirm" | "sent">("confirm");
   const [requestOpen, setRequestOpen] = useState(false);
   const screen = stack[stack.length - 1];
@@ -375,6 +420,7 @@ export function InvestmentApp() {
   const rankedPlans = [...DEMO_CONFIG.plans].sort(
     (a, b) => voteCount(state, b.id) - voteCount(state, a.id),
   );
+  const totalAmount = totalInvestmentAmount(state);
   const selectedForConfirmation = DEMO_CONFIG.plans.filter((e) =>
     state.confirmationPlanIds.includes(e.id),
   );
@@ -456,20 +502,21 @@ export function InvestmentApp() {
   return (
     <SafeAreaView style={s.safe} edges={["top", "bottom"]}>
       <StatusBar barStyle="dark-content" backgroundColor={C.bg} />
-      <View style={s.shell}>
+      <KeyboardAvoidingView style={s.shell} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <View style={s.header}>
           {stack.length > 1 && (
             <Pressable
+              testID="go-back"
               accessibilityRole="button"
               accessibilityLabel="이전 화면"
               onPress={back}
               style={s.headerControl}
             >
-              <Copy style={{ fontSize: 30 }}>‹</Copy>
+              <View style={s.backChevron} />
             </Pressable>
           )}
           <View style={{ flex: 1 }}>
-            <Copy kind="heading" style={{ fontSize: 22 }}>
+            <Copy kind="title">
               {title}
             </Copy>
           </View>
@@ -481,7 +528,7 @@ export function InvestmentApp() {
           />
         </View>
         <View
-          style={s.steps}
+          style={s.progress}
           accessibilityRole="progressbar"
           role="progressbar"
           aria-label="투자 진행 단계"
@@ -496,43 +543,19 @@ export function InvestmentApp() {
             text: `${step}/3단계 / ${title}`,
           }}
         >
-          {["투자안 선택", "투표 결과", "투자 확인"].map((label, i) => (
-            <View key={label} style={s.step}>
-              {i < 2 && (
-                <View
-                  style={[
-                    s.stepConnector,
-                    step > i + 1 && s.stepConnectorActive,
-                  ]}
-                />
-              )}
-              <View
-                style={[
-                  s.stepDot,
-                  step >= i + 1 && s.stepActive,
-                  step === i + 1 && s.stepCurrent,
-                ]}
-              >
-                <Copy
-                  kind="label"
-                  style={{ color: step >= i + 1 ? "white" : C.muted }}
-                >
-                  {step > i + 1 ? "✓" : i + 1}
-                </Copy>
-              </View>
-              <Copy
-                kind="small"
-                style={{
-                  color: step === i + 1 ? C.green : C.muted,
-                  fontFamily: step === i + 1 ? "HanaBold" : "HanaRegular",
-                }}
-              >
-                {label}
-              </Copy>
-            </View>
+          {[1, 2, 3].map((n) => (
+            <View
+              key={n}
+              style={[
+                s.progressSegment,
+                { backgroundColor: n <= step ? C.green : C.line },
+              ]}
+            />
           ))}
         </View>
         <ScrollView
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           ref={scroll}
           style={s.scroll}
           contentContainerStyle={s.content}
@@ -542,14 +565,14 @@ export function InvestmentApp() {
             {screen.name === "list" && (
               <>
                 <View style={s.hero}>
-                  <Copy kind="label" style={{ color: "white" }}>
+                  <Copy kind="small" style={{ color: C.muted }}>
                     {pod.name}
                   </Copy>
                   <View style={s.mascotRow}>
                     <View style={s.mascotCopy}>
                       <Copy
                         kind="heading"
-                        style={{ color: "white", fontSize: 23, lineHeight: 32 }}
+                        style={{ color: C.ink, fontSize: 28, lineHeight: 36 }}
                       >
                         투자안을 함께{"\n"}조율하고 있어요
                       </Copy>
@@ -563,7 +586,7 @@ export function InvestmentApp() {
                       </View>
                       <Copy
                         kind="small"
-                        style={{ color: "white", marginTop: 6 }}
+                        style={{ color: C.muted, marginTop: 6 }}
                       >
                         {STYLE_DESCRIPTIONS[pod.investmentStyle]}
                       </Copy>
@@ -586,27 +609,27 @@ export function InvestmentApp() {
                       <Copy kind="label">투표 현황</Copy>
                     </View>
                     <Copy kind="small" style={{ color: C.muted }}>
-                      {pod.threshold + 1}명 이상 / 후보 확정
+                      {pod.threshold + 1}명 이상 / 완료
                     </Copy>
                   </View>
                   <View style={s.summaryRow}>
                     <View style={s.summaryItem}>
-                      <Copy style={{ ...s.summaryNumber, color: C.green }}>
+                      <Copy style={{ ...s.summaryNumber, color: STATUS_COLORS.confirmed.text }}>
                         {counts.confirmed}
                       </Copy>
-                      <Copy kind="small">후보 확정</Copy>
+                      <Copy kind="small">완료</Copy>
                     </View>
                     <View style={s.summaryItem}>
-                      <Copy style={{ ...s.summaryNumber, color: "#8B5D14" }}>
+                      <Copy style={{ ...s.summaryNumber, color: STATUS_COLORS.discussing.text }}>
                         {counts.discussing}
                       </Copy>
-                      <Copy kind="small">논의 중</Copy>
+                      <Copy kind="small">진행 중</Copy>
                     </View>
                     <View style={s.summaryItem}>
-                      <Copy style={{ ...s.summaryNumber, color: C.muted }}>
+                      <Copy style={{ ...s.summaryNumber, color: STATUS_COLORS.low.text }}>
                         {counts.low}
                       </Copy>
-                      <Copy kind="small">관심 낮음</Copy>
+                      <Copy kind="small">종료</Copy>
                     </View>
                   </View>
                   {state.latestVote && (
@@ -625,13 +648,6 @@ export function InvestmentApp() {
                     </View>
                   )}
                 </View>
-                {state.submitted && (
-                  <View style={s.notice}>
-                    <Copy kind="label" style={{ color: C.green }}>
-                      ✓ 투표 제출 완료 / 선택 변경 불가
-                    </Copy>
-                  </View>
-                )}
                 <View style={s.sectionHeading}>
                   <Copy kind="heading">AI 추천 투자안</Copy>
                   <Pill>{aiPlans.length}개</Pill>
@@ -642,14 +658,14 @@ export function InvestmentApp() {
                     plan={plan}
                     state={state}
                     selected={state.selectedPlanIds.includes(plan.id)}
-                    locked={state.submitted}
+                    locked={state.submitted && !DEMO_RULES.allowVoteChangesAfterSubmission}
                     onDetail={() => go({ name: "detail", planId: plan.id })}
                     onSelect={() => toggle(plan.id)}
                   />
                 ))}
                 <View style={s.sectionDivider} />
                 <View style={s.sectionHeading}>
-                  <View>
+                  <View style={{ flex: 1 }}>
                     <Copy kind="heading">모임원의 개별 투자안</Copy>
                     <Copy kind="small" style={{ color: C.muted, marginTop: 4 }}>
                       모임원이 제안한 국내 주식 {memberPlans.length}개
@@ -662,8 +678,8 @@ export function InvestmentApp() {
                     onPress={() => setNotice(true)}
                     style={s.addButton}
                   >
-                    <Copy style={{ color: C.green, fontSize: 20 }}>＋</Copy>
-                    <Copy kind="label" style={{ color: C.green }}>
+                    <Copy style={{ color: "white", fontSize: 20 }}>＋</Copy>
+                    <Copy kind="label" style={{ color: "white" }}>
                       제안하기
                     </Copy>
                   </Pressable>
@@ -674,7 +690,7 @@ export function InvestmentApp() {
                     plan={plan}
                     state={state}
                     selected={state.selectedPlanIds.includes(plan.id)}
-                    locked={state.submitted}
+                    locked={state.submitted && !DEMO_RULES.allowVoteChangesAfterSubmission}
                     onDetail={() => go({ name: "detail", planId: plan.id })}
                     onSelect={() => toggle(plan.id)}
                   />
@@ -690,10 +706,8 @@ export function InvestmentApp() {
                   <Copy kind="small" style={{ color: C.muted }}>
                     {detail.code} / {detail.category}
                   </Copy>
-                  <Copy kind="title" style={{ marginTop: 8 }}>
-                    {detail.name}
-                  </Copy>
-                  <Copy style={{ color: C.muted, marginTop: 10 }}>
+                  <View style={[s.row, { marginTop: 8 }]}><CompanyLogo plan={detail} /><Copy kind="title" style={{ flex: 1 }}>{detail.name}</Copy></View>
+                  <Copy kind="small" style={{ color: C.muted, marginTop: 10 }}>
                     {detail.description}
                   </Copy>
                   <View style={{ alignSelf: "flex-start", marginTop: 16 }}>
@@ -751,27 +765,10 @@ export function InvestmentApp() {
                   </Copy>
                 </View>
                 <View style={s.infoCard}>
-                  <Copy kind="heading">모임의 투표 현황</Copy>
-                  <View style={{ marginVertical: 16 }}>
+                  <Copy kind="heading">투표 현황</Copy>
+                  <View style={{ marginTop: 16 }}>
                     <VoteStatus plan={detail} state={state} prominent />
                   </View>
-                  <Copy>
-                    {pod.threshold}명 초과, {pod.threshold + 1}명 이상 득표 시
-                    후보 등록
-                  </Copy>
-                  <Copy kind="small" style={{ color: C.muted, marginTop: 8 }}>
-                    후보 등록은 최종 승인이나 주문이 아닙니다.
-                  </Copy>
-                  {state.submitted && (
-                    <Copy
-                      kind="label"
-                      style={{ marginTop: 12, color: C.green }}
-                    >
-                      {state.selectedPlanIds.includes(detail.id)
-                        ? "✓ 내가 투표한 투자안"
-                        : "투표 제출 완료 / 내가 선택하지 않은 투자안"}
-                    </Copy>
-                  )}
                 </View>
               </>
             )}
@@ -781,46 +778,41 @@ export function InvestmentApp() {
                   <View style={s.row}>
                     <Copy kind="heading">전체 투표 현황</Copy>
                     <Copy kind="small" style={{ color: C.muted }}>
-                      전체 {pod.members.length}명
+                      전체 <Copy style={s.dynamicValue}>{pod.members.length}명</Copy>
                     </Copy>
                   </View>
                   <Copy kind="small" style={{ color: C.muted, marginTop: 5 }}>
-                    {pod.threshold + 1}명 이상 찬성 시 후보 확정
+                    <Copy style={s.dynamicValue}>{pod.threshold + 1}명</Copy> 이상 찬성 시 완료
                   </Copy>
                   {member?.isRepresentative && (
                     <Copy kind="small" style={{ color: C.muted, marginTop: 5 }}>
-                      확정된 종목에서 투자 확인 대상을 선택해주세요
+                      완료된 종목에서 투자 확인 대상을 선택해주세요
                     </Copy>
                   )}
                   <View style={s.chartLegend}>
                     <View style={s.legendItem}>
                       <View
-                        style={[s.legendDot, { backgroundColor: C.green }]}
+                        style={[s.legendDot, { backgroundColor: STATUS_COLORS.confirmed.chart }]}
                       />
-                      <Copy kind="small">후보 확정</Copy>
+                      <Copy kind="small">완료</Copy>
                     </View>
                     <View style={s.legendItem}>
                       <View
-                        style={[s.legendDot, { backgroundColor: C.accent }]}
+                        style={[s.legendDot, { backgroundColor: STATUS_COLORS.discussing.chart }]}
                       />
-                      <Copy kind="small">논의 중</Copy>
+                      <Copy kind="small">진행 중</Copy>
                     </View>
                     <View style={s.legendItem}>
                       <View
-                        style={[s.legendDot, { backgroundColor: C.soft }]}
+                        style={[s.legendDot, { backgroundColor: STATUS_COLORS.low.chart }]}
                       />
-                      <Copy kind="small">관심 낮음</Copy>
+                      <Copy kind="small">종료</Copy>
                     </View>
                   </View>
                   {rankedPlans.map((plan) => {
                     const count = voteCount(state, plan.id);
                     const status = discussionStatus(state, plan.id);
-                    const color =
-                      status === "confirmed"
-                        ? C.green
-                        : status === "discussing"
-                          ? C.accent
-                          : C.soft;
+                    const color = STATUS_COLORS[status].chart;
                     return (
                       <View
                         key={plan.id}
@@ -852,21 +844,16 @@ export function InvestmentApp() {
                             <Copy
                               kind="small"
                               style={{
-                                color:
-                                  status === "low"
-                                    ? C.muted
-                                    : status === "discussing"
-                                      ? "#8B5D14"
-                                      : C.green,
+                                color: STATUS_COLORS[status].text,
                               }}
                             >
                               {status === "confirmed"
-                                ? "후보 확정"
+                                ? "완료"
                                 : status === "discussing"
-                                  ? "논의 중"
-                                  : "관심 낮음"}
+                                  ? "진행 중"
+                                  : "종료"}
                             </Copy>
-                            <Copy kind="label" style={{ color: C.green }}>
+                            <Copy kind="label" style={{ color: STATUS_COLORS[status].text, fontFamily: "HanaBold", fontSize: 20 }}>
                               {count}명
                             </Copy>
                           </View>
@@ -881,12 +868,9 @@ export function InvestmentApp() {
                               />
                             ))}
                             <View
-                              style={[
-                                s.thresholdMarker,
-                                {
-                                  left: `${((pod.threshold + 1) / pod.members.length) * 100}%`,
-                                },
-                              ]}
+                              testID={`threshold-range-${plan.id}`}
+                              pointerEvents="none"
+                              style={[s.thresholdRange, { width: `${Math.min(1, (pod.threshold + 1) / pod.members.length) * 100}%` }]}
                             />
                           </View>
                         </Pressable>
@@ -907,9 +891,6 @@ export function InvestmentApp() {
                       </View>
                     );
                   })}
-                  <Copy kind="small" style={{ color: C.muted, marginTop: 12 }}>
-                    점선 = 후보 기준
-                  </Copy>
                   {candidates.length === 0 && (
                     <View testID="empty-candidates">
                       <Copy
@@ -926,11 +907,12 @@ export function InvestmentApp() {
             {screen.name === "confirm" && canConfirm(state) && (
               <>
                 <Copy kind="heading">
-                  선택한 투자안 {selectedForConfirmation.length}개를 확인하세요
+                  선택한 투자안 <Copy style={s.dynamicValue}>{selectedForConfirmation.length}개</Copy>를 확인하세요
                 </Copy>
                 <View style={s.infoCard}>
                   <Copy kind="heading">모임 정보</Copy>
                   <Facts
+                    emphasizeValues
                     rows={[
                       ["모임명", pod.name],
                       ["대표자", representative?.name ?? "미지정"],
@@ -940,38 +922,64 @@ export function InvestmentApp() {
                   />
                 </View>
                 <Copy kind="heading">
-                  선택한 투자 후보 {selectedForConfirmation.length}개
+                  선택한 투자 후보 <Copy style={s.dynamicValue}>{selectedForConfirmation.length}개</Copy>
                 </Copy>
                 {selectedForConfirmation.map((plan, i) => (
                   <View style={s.infoCard} key={plan.id}>
-                    <Copy kind="small" style={{ color: C.green }}>
-                      투자 후보 {String(i + 1).padStart(2, "0")}
-                    </Copy>
-                    <Copy kind="heading" style={{ marginTop: 8 }}>
-                      {plan.name}
-                    </Copy>
-                    <Copy style={{ color: C.muted, marginTop: 6 }}>
-                      {plan.category}
-                    </Copy>
-                    <View style={{ marginTop: 14 }}>
-                      <VoteStatus plan={plan} state={state} prominent />
+                    <View style={s.confirmationPlanHeader}>
+                      <View style={{ flex: 1 }}>
+                        <Copy kind="small" style={{ color: C.green }}>
+                          투자 후보 {String(i + 1).padStart(2, "0")}
+                        </Copy>
+                        <Copy kind="heading" style={{ marginTop: 6 }}>
+                          {plan.name}
+                        </Copy>
+                      </View>
+                      <View
+                        style={s.confirmationVotes}
+                        accessible
+                        accessibilityLabel={`${plan.name}, ${voteCount(state, plan.id)}명 찬성`}
+                      >
+                        <Copy style={{ ...s.voteNumber, color: STATUS_COLORS.confirmed.text }}>
+                          {voteCount(state, plan.id)}
+                        </Copy>
+                        <Copy kind="small" style={{ color: STATUS_COLORS.confirmed.text }}>
+                          명 찬성
+                        </Copy>
+                      </View>
                     </View>
-                    <Copy
-                      kind="small"
-                      style={{ color: C.muted, marginTop: 12 }}
-                    >
-                      {voteCount(state, plan.id)}명이 투표해 기준{" "}
-                      {pod.threshold}
-                      명을 초과했어요.
-                    </Copy>
+                    <View style={s.amountEntry}>
+                      <Copy kind="label">투자 금액</Copy>
+                      <View style={s.amountInputRow}>
+                        <TextInput
+                          testID={`investment-amount-${plan.id}`}
+                          accessibilityLabel={`${plan.name} 투자 금액`}
+                          value={state.investmentAmounts[plan.id] ? state.investmentAmounts[plan.id].toLocaleString("ko-KR") : ""}
+                          onChangeText={(text) => {
+                            const digits = text.replace(/,/g, "");
+                            if (!/^\d*$/.test(digits)) return;
+                            const amount = digits === "" ? 0 : Number(digits);
+                            dispatch({ type: "setInvestmentAmount", planId: plan.id, amount });
+                          }}
+                          keyboardType="number-pad"
+                          inputMode="numeric"
+                          placeholder="금액 입력"
+                          placeholderTextColor={C.muted}
+                          maxLength={17}
+                          selectTextOnFocus
+                          style={s.amountInput}
+                        />
+                        <Copy kind="label" style={{ color: C.muted }}>원</Copy>
+                      </View>
+                    </View>
                   </View>
                 ))}
-                <View testID="planned-amount" style={s.amountCard}>
-                  <Copy kind="label" style={{ color: "white" }}>
-                    투자 예정 금액
+                <View testID="total-investment-amount" style={s.amountCard}>
+                  <Copy kind="label" style={{ color: C.muted }}>
+                    총 투자 금액
                   </Copy>
                   <Copy style={s.plannedAmount}>
-                    {money(pod.plannedInvestmentAmount)}
+                    {money(totalAmount)}
                   </Copy>
                 </View>
               </>
@@ -983,49 +991,30 @@ export function InvestmentApp() {
             <>
               <View style={s.row}>
                 <Copy kind="label">
-                  {state.submitted
-                    ? "투표 제출 완료"
-                    : `${state.selectedPlanIds.length}개 선택`}
+                  {state.selectedPlanIds.length}개 선택
                 </Copy>
-                <Copy kind="small" style={{ color: C.muted }}>
-                  {state.submitted ? "선택 변경 불가" : "복수 선택 가능"}
-                </Copy>
+                <VotingTimer seconds={remainingSeconds} />
               </View>
               <Button
                 testID="submit-vote"
-                label={state.submitted ? "투표 결과 보기" : "투표 제출"}
-                disabled={!state.submitted && !canSubmit(state)}
-                onPress={
-                  state.submitted ? () => go({ name: "results" }) : submit
-                }
+                label="투표하기"
+                disabled={!canSubmit(state)}
+                onPress={submit}
               />
             </>
           )}
           {screen.name === "detail" && detail && (
-            <>
-              {state.submitted && (
-                <Copy kind="small" style={{ color: C.muted }}>
-                  제출한 투표는 수정할 수 없어요
-                </Copy>
-              )}
-              <Button
-                label={
-                  state.submitted
-                    ? "이전 화면으로"
-                    : state.selectedPlanIds.includes(detail.id)
-                      ? "선택 해제"
-                      : "선택하기"
-                }
-                onPress={state.submitted ? back : () => toggle(detail.id)}
-              />
-            </>
+            <Button
+              label={state.selectedPlanIds.includes(detail.id) ? "선택 해제" : "선택하기"}
+              onPress={() => toggle(detail.id)}
+            />
           )}
           {screen.name === "results" &&
             (member?.isRepresentative ? (
               <>
                 <View style={s.row}>
                   <Copy kind="label">
-                    투자 확인 대상 {state.confirmationPlanIds.length}개
+                    투자 확인 대상 <Copy style={s.dynamicValue}>{state.confirmationPlanIds.length}개</Copy>
                   </Copy>
                   <Copy kind="small" style={{ color: C.muted }}>
                     대표자 / {member.name}
@@ -1033,17 +1022,22 @@ export function InvestmentApp() {
                 </View>
                 <Button
                   testID="open-confirmation"
-                  label="투자 확인으로"
-                  disabled={!canConfirm(state)}
+                  label={hasVoteChanges(state) ? "투표 수정 제출" : "투자 확정하기"}
+                  disabled={hasVoteChanges(state) ? !canSubmit(state) : !canConfirm(state)}
                   onPress={() => {
-                    if (canConfirm(state)) go({ name: "confirm" });
+                    if (hasVoteChanges(state) && canSubmit(state)) dispatch({ type: "submit" });
+                    else if (canConfirm(state)) go({ name: "confirm" });
                   }}
                 />
               </>
             ) : (
               <Button
-                label="투자안 목록으로"
-                onPress={() => setStack([{ name: "list" }])}
+                label={hasVoteChanges(state) ? "투표 수정 제출" : "투자안 목록으로"}
+                disabled={hasVoteChanges(state) && !canSubmit(state)}
+                onPress={() => {
+                  if (hasVoteChanges(state)) dispatch({ type: "submit" });
+                  else setStack([{ name: "list" }]);
+                }}
               />
             ))}
           {screen.name === "confirm" && (
@@ -1059,9 +1053,10 @@ export function InvestmentApp() {
               <Button
                 testID="request-investment"
                 label="투자 실행 요청하기"
-                disabled={!canConfirm(state)}
+                disabled={!canRequestInvestment(state)}
                 onPress={() => {
-                  if (canConfirm(state)) {
+                  if (canRequestInvestment(state)) {
+                    Keyboard.dismiss();
                     setRequestDialog("confirm");
                     setRequestOpen(true);
                   }
@@ -1070,7 +1065,7 @@ export function InvestmentApp() {
             </>
           )}
         </View>
-      </View>
+      </KeyboardAvoidingView>
       <Modal
         visible={notice}
         transparent
@@ -1096,26 +1091,18 @@ export function InvestmentApp() {
         <View style={s.modalOverlay}>
           <View style={[s.modalCard, s.requestCard]} accessibilityViewIsModal>
             <View style={s.requestIllustration}>
+              <Image
+                source={requestDialog === "sent" ? require("../assets/images/mascot-success-white.png") : require("../reference/04.png")}
+                style={s.requestMascot}
+                resizeMode="contain"
+                accessibilityLabel={requestDialog === "sent" ? "승인 요청 알림 전송을 기뻐하는 하나 마스코트" : "함께 투자 결정을 고민하는 하나 마스코트"}
+              />
               <View style={s.requestBubble}>
                 <Copy kind="label" style={{ color: C.ink, textAlign: "center" }}>
                   {requestDialog === "sent" ? "알림을\n보냈어요!" : "함께\n결정해요"}
                 </Copy>
                 <View style={s.requestBubbleTail} />
               </View>
-              <Image
-                source={
-                  requestDialog === "sent"
-                    ? require("../assets/images/mascot-success-white.png")
-                    : require("../reference/04.png")
-                }
-                style={s.requestMascot}
-                resizeMode="contain"
-                accessibilityLabel={
-                  requestDialog === "sent"
-                    ? "승인 요청 알림 전송을 기뻐하는 하나 마스코트"
-                    : "함께 투자 결정을 고민하는 하나 마스코트"
-                }
-              />
             </View>
             <View style={s.requestContent}>
             <Copy kind="heading" style={{ textAlign: "center", fontSize: 21, lineHeight: 29 }}>
@@ -1123,18 +1110,28 @@ export function InvestmentApp() {
                 ? "승인 요청 알림을 보냈어요"
                 : "구성원에게 승인을 요청할까요?"}
             </Copy>
-            <Copy style={{ color: C.muted, textAlign: "center", marginTop: 12, marginBottom: 20 }}>
+            <Copy kind="small" style={{ color: C.muted, textAlign: "center", marginTop: 10 }}>
               {requestDialog === "sent"
                 ? "구성원들의 투자 승인 의견을 기다려주세요."
-                : `선택한 투자안 ${selectedForConfirmation.length}개와 투자 예정 금액 ${money(pod.plannedInvestmentAmount)}에 대한 승인 요청 알림을 구성원들에게 보냅니다.`}
+                : "아래 투자 내용의 승인 요청을\n구성원들에게 보냅니다."}
             </Copy>
+            <View style={s.requestSummary} testID="approval-request-summary">
+              <View style={s.row}>
+                <Copy style={{ color: C.muted }}>선택한 투자안</Copy>
+                <Copy style={s.requestSummaryValue}>{selectedForConfirmation.length}개</Copy>
+              </View>
+              <View style={s.row}>
+                <Copy style={{ color: C.muted }}>총 투자 금액</Copy>
+                <Copy style={s.requestSummaryValue}>{money(totalAmount)}</Copy>
+              </View>
+            </View>
             {requestDialog === "confirm" ? (
               <>
                 <Button
                   testID="send-approval-request"
                   label="알림 보내기"
                   onPress={() => {
-                    if (canConfirm(state)) setRequestDialog("sent");
+                    if (canRequestInvestment(state)) setRequestDialog("sent");
                   }}
                 />
                 <Pressable
@@ -1158,73 +1155,82 @@ export function InvestmentApp() {
 }
 
 const s = StyleSheet.create({
+  dynamicValue: { fontFamily: "HanaBold", fontSize: 21, lineHeight: 28, color: C.green },
+  planIconLarge: { width: 68, height: 68, borderRadius: 16 },
+  planContentRow: { flexDirection: "row", alignItems: "center", gap: 14 },
+  marketIcon: { flexDirection: "row", alignItems: "flex-end", gap: 5, height: 36 },
+  clockIcon: { width: 36, height: 36, borderRadius: 18, borderWidth: 2.5, borderColor: C.green },
+  clockHour: { position: "absolute", width: 2.5, height: 12, backgroundColor: C.green, left: 15, top: 5, borderRadius: 2 },
+  clockMinute: { position: "absolute", width: 11, height: 2.5, backgroundColor: C.green, left: 15, top: 15, borderRadius: 2 },
+  coinIcon: { width: 40, height: 40, borderRadius: 20, borderWidth: 2, borderColor: C.green, alignItems: "center", justifyContent: "center" },
+  cardShadow: {
+    backgroundColor: C.card,
+    borderRadius: 22,
+    ...Platform.select({
+      web: { boxShadow: "3px 5px 12px rgba(32,44,48,0.07)" },
+      default: { shadowColor: C.dark, shadowOffset: { width: 3, height: 4 }, shadowOpacity: 0.07, shadowRadius: 8, elevation: 2 },
+    }),
+  },
+  companyLogo: { width: 46, height: 42, borderRadius: 10, backgroundColor: C.iconBackground, borderWidth: 1, borderColor: C.line, alignItems: "center", justifyContent: "center", flexShrink: 0 },
+  timerInline: { flexDirection: "row", alignItems: "center", gap: 6 },
+  timerNumber: { fontFamily: "HanaBold", fontSize: 15, lineHeight: 20, color: C.dark, fontVariant: ["tabular-nums"] },
   text: { color: C.ink, fontFamily: "HanaRegular" },
-  body: { fontSize: 14, lineHeight: 21 },
-  small: { fontSize: 12, lineHeight: 18 },
+  body: { fontSize: 16, lineHeight: 24 },
+  small: { fontSize: 13, lineHeight: 19 },
   title: {
-    fontSize: 27,
+    fontSize: 28,
     lineHeight: 36,
-    fontFamily: "HanaHeavy",
+    fontFamily: "HanaBold",
     letterSpacing: -0.4,
   },
   heading: { fontSize: 19, lineHeight: 27, fontFamily: "HanaBold" },
-  label: { fontSize: 14, lineHeight: 21, fontFamily: "HanaMedium" },
-  safe: { flex: 1, backgroundColor: C.bg },
-  shell: { flex: 1, width: "100%", maxWidth: 520, alignSelf: "center" },
+  label: { fontSize: 16, lineHeight: 24, fontFamily: "HanaMedium" },
+  safe: { flex: 1, backgroundColor: Platform.OS === "web" ? C.outside : C.bg },
+  shell: { flex: 1, width: "100%", maxWidth: 430, alignSelf: "center", backgroundColor: C.bg },
   header: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 22,
     paddingVertical: 12,
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
   },
   headerControl: {
-    width: 36,
-    height: 44,
+    width: 44,
+    height: 56,
     justifyContent: "center",
     alignItems: "center",
+  },
+  backChevron: {
+    width: 14,
+    height: 14,
+    borderLeftWidth: 2.5,
+    borderBottomWidth: 2.5,
+    borderColor: C.ink,
+    transform: [{ rotate: "45deg" }],
+    marginLeft: 6,
   },
   logo: { width: 36, height: 40, marginLeft: "auto", flexShrink: 0 },
   addButton: {
-    minHeight: 44,
+    minHeight: 56,
+    flexShrink: 0,
     paddingHorizontal: 12,
     flexDirection: "row",
     gap: 4,
-    backgroundColor: C.mint,
-    borderRadius: 14,
+    backgroundColor: C.green,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
   },
-  steps: {
+  progress: {
     flexDirection: "row",
-    paddingHorizontal: 20,
-    paddingBottom: 18,
+    gap: 6,
+    paddingHorizontal: 22,
     paddingTop: 4,
+    paddingBottom: 20,
   },
-  step: { flex: 1, alignItems: "center", gap: 7 },
-  stepConnector: {
-    position: "absolute",
-    top: 16,
-    left: "50%",
-    right: "-50%",
-    marginHorizontal: 20,
-    borderTopWidth: 2,
-    borderColor: "#B7CCCC",
-    borderStyle: "dashed",
-  },
-  stepConnectorActive: { borderColor: C.green },
-  stepDot: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#E2EBEB",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  stepActive: { backgroundColor: C.green },
-  stepCurrent: { borderWidth: 3, borderColor: "#BCE4E4" },
+  progressSegment: { flex: 1, height: 2, borderRadius: 2 },
   scroll: { flex: 1 },
-  content: { padding: 20, paddingTop: 4, paddingBottom: 28 },
+  content: { padding: 22, paddingTop: 4, paddingBottom: 28 },
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -1232,10 +1238,9 @@ const s = StyleSheet.create({
     gap: 8,
   },
   hero: {
-    padding: 18,
-    paddingBottom: 12,
-    borderRadius: 20,
-    backgroundColor: C.green,
+    padding: 20,
+    borderRadius: 22,
+    backgroundColor: C.mint,
   },
   mascotRow: {
     flexDirection: "row",
@@ -1253,7 +1258,7 @@ const s = StyleSheet.create({
   voteTotal: { flexDirection: "row", alignItems: "baseline", gap: 3 },
   voteNumber: {
     color: C.green,
-    fontFamily: "HanaHeavy",
+    fontFamily: "HanaBold",
     fontSize: 32,
     lineHeight: 38,
   },
@@ -1264,36 +1269,33 @@ const s = StyleSheet.create({
     paddingVertical: 4,
     alignSelf: "flex-start",
   },
-  neutralPill: { backgroundColor: "#EFF3F3" },
-  riskPill: { backgroundColor: "#F8EFE8" },
+  neutralPill: { backgroundColor: C.iconBackground },
+  riskPill: { backgroundColor: C.notice },
   card: {
-    backgroundColor: "white",
+    backgroundColor: C.card,
     borderRadius: 22,
     borderWidth: 1,
     borderColor: C.line,
     overflow: "hidden",
   },
   selectedCard: { borderColor: C.green, borderWidth: 1.5 },
-  cardBody: { padding: 16, paddingTop: 8 },
+  cardBody: { padding: 20, paddingTop: 12 },
   cardStatus: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingTop: 14,
+    paddingHorizontal: 20,
+    paddingTop: 20,
     gap: 8,
   },
-  confirmedCard: { backgroundColor: "#F2FBF9", borderColor: C.green },
+  confirmedCard: { borderColor: C.green },
   discussionBadge: {
     paddingHorizontal: 9,
     paddingVertical: 5,
     borderRadius: 9,
   },
-  confirmedBadge: { backgroundColor: "#DDF3EF" },
-  discussingBadge: { backgroundColor: "#FFF2D9" },
-  lowBadge: { backgroundColor: "#EFF3F3" },
   styleBadge: {
-    backgroundColor: "white",
+    backgroundColor: C.bg,
     borderRadius: 10,
     alignSelf: "flex-start",
     paddingHorizontal: 12,
@@ -1301,7 +1303,7 @@ const s = StyleSheet.create({
     marginTop: 10,
   },
   livePanel: {
-    backgroundColor: "white",
+    backgroundColor: C.notice,
     borderRadius: 18,
     padding: 16,
     borderWidth: 1,
@@ -1311,7 +1313,7 @@ const s = StyleSheet.create({
   liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: C.green },
   summaryRow: { flexDirection: "row", marginTop: 14 },
   summaryItem: { flex: 1, alignItems: "center", gap: 4 },
-  summaryNumber: { fontFamily: "HanaHeavy", fontSize: 26, lineHeight: 32 },
+  summaryNumber: { fontFamily: "HanaBold", fontSize: 26, lineHeight: 32 },
   sectionHeading: {
     flexDirection: "row",
     alignItems: "center",
@@ -1322,8 +1324,8 @@ const s = StyleSheet.create({
   cardFooter: {
     borderTopWidth: 1,
     borderTopColor: C.line,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 20,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
@@ -1340,41 +1342,41 @@ const s = StyleSheet.create({
     gap: 8,
     alignItems: "center",
     justifyContent: "flex-end",
-    minHeight: 44,
+    minHeight: 56,
     paddingHorizontal: 6,
   },
   checkbox: {
     width: 26,
     height: 26,
-    borderRadius: 8,
-    borderColor: "#B7CCCC",
+    borderRadius: 13,
+    borderColor: C.checkBorder,
     borderWidth: 1.5,
-    backgroundColor: "white",
+    backgroundColor: C.bg,
     alignItems: "center",
     justifyContent: "center",
   },
   checked: { backgroundColor: C.green, borderColor: C.green },
   bottom: {
-    padding: 18,
+    padding: 22,
     paddingTop: 12,
     gap: 10,
-    backgroundColor: "white",
+    backgroundColor: C.bg,
     borderTopWidth: 1,
     borderTopColor: C.line,
   },
   button: {
-    minHeight: 54,
+    minHeight: 56,
     paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: 16,
+    paddingHorizontal: 22,
+    borderRadius: 12,
     backgroundColor: C.green,
     alignItems: "center",
     justifyContent: "center",
   },
-  buttonDisabled: { backgroundColor: "#E2EEEE" },
+  buttonDisabled: { opacity: 0.4 },
   pressed: { opacity: 0.65 },
   infoCard: {
-    backgroundColor: "white",
+    backgroundColor: C.bg,
     borderRadius: 20,
     padding: 20,
     borderWidth: 1,
@@ -1401,10 +1403,9 @@ const s = StyleSheet.create({
     gap: 12,
     paddingVertical: 13,
     borderBottomWidth: 1,
-    borderBottomColor: "#EEF3F3",
+    borderBottomColor: C.line,
   },
   disclaimer: { color: C.muted, marginTop: 8, lineHeight: 19 },
-  notice: { padding: 18, backgroundColor: C.mint, borderRadius: 16 },
   chartItem: {
     flexDirection: "row",
     alignItems: "center",
@@ -1428,14 +1429,16 @@ const s = StyleSheet.create({
   legendDot: { width: 8, height: 8, borderRadius: 3 },
   chartRow: { paddingVertical: 8, gap: 6 },
   voteSegments: { flexDirection: "row", gap: 4, height: 10, marginVertical: 2 },
-  voteSegment: { flex: 1, backgroundColor: "#EEF3F3", borderRadius: 3 },
-  thresholdMarker: {
+  voteSegment: { flex: 1, backgroundColor: C.line, borderRadius: 3 },
+  thresholdRange: {
     position: "absolute",
-    top: -3,
-    bottom: -3,
-    borderLeftWidth: 1.5,
+    left: -2,
+    top: -4,
+    bottom: -4,
+    borderWidth: 1.5,
     borderColor: C.green,
     borderStyle: "dashed",
+    borderRadius: 5,
   },
   empty: {
     alignItems: "center",
@@ -1443,15 +1446,22 @@ const s = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     borderStyle: "dashed",
-    borderColor: "#B7CCCC",
-    backgroundColor: "white",
+    borderColor: C.checkBorder,
+    backgroundColor: C.bg,
   },
-  amountCard: { padding: 24, borderRadius: 20, backgroundColor: C.green },
+  confirmationPlanHeader: { flexDirection: "row", alignItems: "center", gap: 14 },
+  confirmationVotes: { flexDirection: "row", alignItems: "baseline", gap: 4, flexShrink: 0 },
+  amountEntry: { marginTop: 18, gap: 8 },
+  amountInputRow: { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 12, borderWidth: 1, borderColor: C.line, backgroundColor: C.bg, paddingHorizontal: 14 },
+  amountInput: { flex: 1, minWidth: 0, minHeight: 56, fontFamily: "HanaBold", fontSize: 22, color: C.dark, textAlign: "right", paddingVertical: 12 },
+  requestSummary: { backgroundColor: C.notice, borderRadius: 14, padding: 14, gap: 12, marginVertical: 18 },
+  requestSummaryValue: { fontFamily: "HanaBold", fontSize: 21, lineHeight: 28, color: C.ink, flexShrink: 1, textAlign: "right" },
+  amountCard: { padding: 20, borderRadius: 22, backgroundColor: C.notice },
   plannedAmount: {
-    color: "white",
-    fontFamily: "HanaHeavy",
-    fontSize: 40,
-    lineHeight: 52,
+    color: C.ink,
+    fontFamily: "HanaBold",
+    fontSize: 38,
+    lineHeight: 48,
     marginTop: 12,
   },
   modalOverlay: {
@@ -1462,31 +1472,27 @@ const s = StyleSheet.create({
     padding: 24,
   },
   secondaryButton: {
-    minHeight: 44,
+    minHeight: 56,
     alignItems: "center",
     justifyContent: "center",
   },
   requestCard: { padding: 0, overflow: "hidden" },
   requestIllustration: {
-    height: 156,
-    backgroundColor: "white",
+    height: 136,
+    backgroundColor: C.bg,
     overflow: "hidden",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingTop: 16,
+    gap: 10,
   },
-  requestMascot: {
-    position: "absolute",
-    width: 146,
-    height: 146,
-    bottom: -2,
-    left: 20,
-  },
+  requestMascot: { width: 116, height: 116 },
   requestBubble: {
-    position: "absolute",
-    right: 24,
-    top: 38,
-    paddingHorizontal: 20,
-    paddingVertical: 13,
+    paddingHorizontal: 16,
+    paddingVertical: 11,
     borderRadius: 18,
-    backgroundColor: "#F5F3EE",
+    backgroundColor: C.notice,
   },
   requestBubbleTail: {
     position: "absolute",
@@ -1494,15 +1500,15 @@ const s = StyleSheet.create({
     bottom: 16,
     width: 12,
     height: 12,
-    backgroundColor: "#F5F3EE",
+    backgroundColor: C.notice,
     transform: [{ rotate: "45deg" }],
   },
-  requestContent: { padding: 24 },
+  requestContent: { padding: 24, paddingTop: 12 },
   modalCard: {
     width: "100%",
     maxWidth: 400,
     padding: 24,
-    backgroundColor: "white",
+    backgroundColor: C.bg,
     borderRadius: 24,
   },
 });
