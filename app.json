@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "name": "hana spot pod",
+    "slug": "hana-spot-pod",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": { "supportsTablet": true },
+    "android": { "package": "com.hana.spotpod.demo" },
+    "web": { "name": "hana spot pod" }
+  }
+}
