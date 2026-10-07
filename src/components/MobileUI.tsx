@@ -28,12 +28,17 @@ export function Touch({ children, onPress, selected = false, disabled = false, b
   const [scale] = useState(() => new Animated.Value(1));
   const [selection] = useState(() => new Animated.Value(selected ? 1 : 0));
   useEffect(() => {
-    const transition = Animated.timing(selection, { toValue: selected ? 1 : 0, duration: 140, useNativeDriver: false });
+    const transition = Animated.timing(selection, { toValue: selected ? 1 : 0, duration: 140, useNativeDriver: true });
     transition.start();
     return () => transition.stop();
   }, [selected, selection]);
   const animate = (toValue: number) => Animated.timing(scale, { toValue, duration: 90, useNativeDriver: true }).start();
-  return <Animated.View style={{ transform: [{ scale }], borderRadius: 14, backgroundColor: button ? (dark ? palette.ink : palette.green) : selection.interpolate({ inputRange: [0, 1], outputRange: ['#FFFFFF', palette.mint] }), opacity: disabled ? .4 : 1 }}><Pressable accessibilityRole={button ? 'button' : 'radio'} accessibilityLabel={label} aria-checked={button ? undefined : selected} aria-selected={button ? undefined : selected} aria-disabled={disabled} accessibilityState={{ selected, checked: button ? undefined : selected, disabled }} disabled={disabled} onPressIn={() => animate(.985)} onPressOut={() => animate(1)} onPress={() => { if (Platform.OS !== 'web') void Haptics.selectionAsync().catch(() => {}); onPress(); }} style={[button ? ui.button : ui.choice, { backgroundColor: 'transparent' }]}>{children}</Pressable></Animated.View>;
+  // Animate the mint layer's opacity so both values use the native driver.
+  // Mixing a JS color animation with a native scale on one view promotes the shared graph to native.
+  return <Animated.View style={{ transform: [{ scale }], borderRadius: 14, backgroundColor: button ? (dark ? palette.ink : palette.green) : '#FFFFFF', opacity: disabled ? .4 : 1 }}>
+    {!button && <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: 14, backgroundColor: palette.mint, opacity: selection }]} />}
+    <Pressable accessibilityRole={button ? 'button' : 'radio'} accessibilityLabel={label} aria-checked={button ? undefined : selected} aria-selected={button ? undefined : selected} aria-disabled={disabled} accessibilityState={{ selected, checked: button ? undefined : selected, disabled }} disabled={disabled} onPressIn={() => animate(.985)} onPressOut={() => animate(1)} onPress={() => { if (Platform.OS !== 'web') void Haptics.selectionAsync().catch(() => {}); onPress(); }} style={[button ? ui.button : ui.choice, { backgroundColor: 'transparent' }]}>{children}</Pressable>
+  </Animated.View>;
 }
 export function Button({ title, onPress, disabled, dark = false }: { title: string; onPress: () => void; disabled?: boolean; dark?: boolean }) {
   return <Touch onPress={onPress} disabled={disabled} button dark={dark} label={title}><Copy tone="label" style={{ color: '#fff', textAlign: 'center' }}>{title}</Copy></Touch>;
@@ -47,7 +52,7 @@ export function Row({ label, value }: { label: string; value: string }) {
 export function Money({ amount }: { amount: number }) {
   return <Fade key={amount}><Copy tone="amount" adjustsFontSizeToFit numberOfLines={1}>{formatWon(amount)}</Copy></Fade>;
 }
-export function Page({ children, title, step, footer, back = true }: PropsWithChildren<{ title: string; step: number; footer: React.ReactNode; back?: boolean }>) {
+export function Page({ children, title, step, footer, back = true, scrollRef }: PropsWithChildren<{ title: string; step: number; footer: React.ReactNode; back?: boolean; scrollRef?: React.Ref<ScrollView> }>) {
   const [height, setHeight] = useState(0);
   const [entrance] = useState(() => new Animated.Value(Platform.OS === 'web' && step <= 3 ? 0 : 1));
   useFocusEffect(useCallback(() => {
@@ -66,7 +71,7 @@ export function Page({ children, title, step, footer, back = true }: PropsWithCh
   return <View style={ui.outer}><SafeAreaView style={[ui.safe, { overflow: 'hidden' }]} edges={['top', 'bottom']}><Animated.View testID="page-transition" style={{ flex: 1, opacity: entrance, transform: [{ translateX: entrance.interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) }] }}><KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
     <View style={ui.header}>{back ? <Pressable accessibilityRole="button" accessibilityLabel="이전 단계" onPress={() => router.back()} hitSlop={10} style={{ minHeight: 44, minWidth: 44, justifyContent: 'center' }}><Ionicons name="chevron-back" size={22} color={palette.ink} /></Pressable> : <Copy tone="label">하나픽</Copy>}<View style={{ flexDirection: 'row', gap: 16 }}><Copy tone="small" style={{ color: palette.muted }}>{title}</Copy><Copy tone="small" style={{ color: palette.muted }}>{step} / 4</Copy></View></View>
     <View style={ui.progress}>{[1, 2, 3, 4].map(n => <View key={n} style={{ flex: 1, height: 2, borderRadius: 2, backgroundColor: n <= step ? palette.green : palette.line }} />)}</View>
-    <ScrollView onLayout={event => setHeight(event.nativeEvent.layout.height)} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={[ui.content, { minHeight: height }]}>{children}</ScrollView>
+    <ScrollView ref={scrollRef} onLayout={event => setHeight(event.nativeEvent.layout.height)} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === 'web' ? 'none' : 'on-drag'} contentContainerStyle={[ui.content, { minHeight: height }]}>{children}</ScrollView>
     <View style={ui.footer}>{footer}</View>
   </KeyboardAvoidingView></Animated.View></SafeAreaView></View>;
 }
