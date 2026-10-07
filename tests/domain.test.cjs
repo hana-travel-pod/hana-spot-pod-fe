@@ -265,3 +265,48 @@ test("ordinary members cannot set an investment amount or request investment", (
   assert.equal(reduceDemo(state, { type: "setInvestmentAmount", planId: "sp500", amount: 10000 }, config), state);
   assert.equal(canRequestInvestment(state, config), false);
 });
+
+
+test("reset restores votes, selections, confirmation, amounts and submission state", () => {
+  let state = confirmedPair();
+  state = reduceDemo(state, { type: "setInvestmentAmount", planId: "sp500", amount: 150000 });
+  state = receive(state, LIVE_VOTE_EVENTS[0]);
+  assert.ok(state.submitted);
+  assert.equal(state.investmentAmounts.sp500, 150000);
+  assert.ok(state.latestVote);
+  const reset = reduceDemo(state, { type: "reset" });
+  assert.deepEqual(reset, createInitialState());
+  assert.deepEqual(reduceDemo(reset, { type: "reset" }), reset);
+  assert.notEqual(reset.votes[0], INITIAL_VOTES[0]);
+});
+
+const { clearDemoStorage } = require(process.env.HANA_STORAGE_MODULE);
+test("demo reset removes only service keys and supports empty storage", async () => {
+  const entries = new Map([
+    ["hana-spot-pod:v1", "join-demo"],
+    ["hana-spot-pod:investment", "investment-demo"],
+    ["other-app:v1", "keep"],
+    ["hana-spot-pod-other", "keep"],
+  ]);
+  let removals = 0;
+  const storage = {
+    getAllKeys: async () => [...entries.keys()],
+    multiRemove: async (keys) => { removals++; keys.forEach((key) => entries.delete(key)); },
+  };
+  await clearDemoStorage(storage);
+  assert.deepEqual([...entries.keys()], ["other-app:v1", "hana-spot-pod-other"]);
+  await clearDemoStorage(storage);
+  assert.equal(removals, 1);
+});
+test("storage read or deletion failure rejects instead of reporting successful reset", async () => {
+  let removed = false;
+  await assert.rejects(clearDemoStorage({
+    getAllKeys: async () => { throw new Error("read failed"); },
+    multiRemove: async () => { removed = true; },
+  }), /read failed/);
+  assert.equal(removed, false);
+  await assert.rejects(clearDemoStorage({
+    getAllKeys: async () => ["hana-spot-pod:v1"],
+    multiRemove: async () => { throw new Error("delete failed"); },
+  }), /delete failed/);
+});

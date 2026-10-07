@@ -9,6 +9,7 @@ try {
     [
       require.resolve("typescript/bin/tsc"),
       "src/domain.ts",
+      "src/demoStorage.ts",
       "--outDir",
       output,
       "--module",
@@ -21,6 +22,7 @@ try {
     ],
     { stdio: "inherit" },
   );
+  process.env.HANA_STORAGE_MODULE = join(output, "demoStorage.js");
   process.env.HANA_DOMAIN_MODULE = join(output, "domain.js");
   execFileSync(process.execPath, ["--test", "tests/domain.test.cjs"], {
     stdio: "inherit",

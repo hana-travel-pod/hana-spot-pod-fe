@@ -357,6 +357,7 @@ export function canRequestInvestment(state: DemoState, config = DEMO_CONFIG) {
   }) && Number.isSafeInteger(totalInvestmentAmount(state));
 }
 export type Action =
+  | { type: "reset" }
   | { type: "toggleSelection"; planId: string }
   | { type: "submit" }
   | { type: "receiveVote"; vote: Vote }
@@ -367,6 +368,7 @@ export function reduceDemo(
   action: Action,
   config = DEMO_CONFIG,
 ): DemoState {
+  if (action.type === "reset") return createInitialState();
   if (action.type === "setInvestmentAmount") {
     if (!canConfirm(state, config) || !state.confirmationPlanIds.includes(action.planId) ||
       !Number.isSafeInteger(action.amount) || action.amount < 0) return state;

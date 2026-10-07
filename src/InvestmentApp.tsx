@@ -19,6 +19,8 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { clearDemoStorage } from "./demoStorage";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   canConfirm,
@@ -398,7 +400,12 @@ export function InvestmentApp() {
   );
   const [stack, setStack] = useState<Screen[]>([{ name: "list" }]);
   const [notice, setNotice] = useState(false);
-  const [votingEndsAt] = useState(() => Date.now() + DEMO_RULES.votingDurationSeconds * 1000);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetError, setResetError] = useState("");
+  const resetPending = useRef(false);
+  const [resetMessage, setResetMessage] = useState("");
+  const [votingEndsAt, setVotingEndsAt] = useState(() => Date.now() + DEMO_RULES.votingDurationSeconds * 1000);
   const [remainingSeconds, setRemainingSeconds] = useState(DEMO_RULES.votingDurationSeconds);
   useEffect(() => {
     const tick = () => setRemainingSeconds(Math.max(0, Math.ceil((votingEndsAt - Date.now()) / 1000)));
@@ -447,7 +454,7 @@ export function InvestmentApp() {
       if (index >= LIVE_VOTE_EVENTS.length) clearInterval(timer);
     }, DEMO_RULES.liveVoteIntervalMs);
     return () => clearInterval(timer);
-  }, []);
+  }, [votingEndsAt]);
   useEffect(() => {
     AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
     const listener = AccessibilityInfo.addEventListener(
@@ -473,6 +480,10 @@ export function InvestmentApp() {
   }, [screen, opacity, reduceMotion]);
   useEffect(() => {
     const handler = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (resetOpen) {
+        if (!resetPending.current) setResetOpen(false);
+        return true;
+      }
       if (notice) {
         setNotice(false);
         return true;
@@ -484,7 +495,36 @@ export function InvestmentApp() {
       return false;
     });
     return () => handler.remove();
-  }, [stack.length, notice]);
+  }, [stack.length, notice, resetOpen]);
+  useEffect(() => {
+    if (!resetMessage) return;
+    const timer = setTimeout(() => setResetMessage(""), 4500);
+    return () => clearTimeout(timer);
+  }, [resetMessage]);
+  const resetDemo = async () => {
+    if (resetPending.current) return;
+    resetPending.current = true;
+    setResetBusy(true);
+    setResetError("");
+    try {
+      await clearDemoStorage(AsyncStorage);
+      dispatch({ type: "reset" });
+      setStack([{ name: "list" }]);
+      setNotice(false);
+      setRequestOpen(false);
+      setRequestDialog("confirm");
+      setRemainingSeconds(DEMO_RULES.votingDurationSeconds);
+      setVotingEndsAt(Date.now() + DEMO_RULES.votingDurationSeconds * 1000);
+      scroll.current?.scrollTo({ y: 0, animated: false });
+      setResetOpen(false);
+      setResetMessage("시연 데이터를 초기화했어요.");
+    } catch {
+      setResetError("초기화하지 못했어요. 다시 시도해주세요.");
+    } finally {
+      resetPending.current = false;
+      setResetBusy(false);
+    }
+  };
   const submit = () => {
     if (canSubmit(state)) {
       dispatch({ type: "submit" });
@@ -591,17 +631,26 @@ export function InvestmentApp() {
                         {STYLE_DESCRIPTIONS[pod.investmentStyle]}
                       </Copy>
                     </View>
-                    <Image
-                      source={images.mascot}
-                      defaultSource={images.mascot}
-                      fadeDuration={0}
-                      style={[
-                        s.mascot,
-                        width < 360 && { width: 68, height: 128 },
-                      ]}
-                      resizeMode="contain"
-                      accessibilityLabel="투자안을 함께 조율하는 하나 마스코트"
-                    />
+                    <Pressable
+                      testID="demo-reset-mascot"
+                      accessibilityRole="button"
+                      accessibilityLabel="별돌이 캐릭터"
+                      accessibilityHint="누르면 시연 데이터 초기화 확인창이 열립니다."
+                      onPress={() => { setResetError(""); setResetOpen(true); }}
+                      style={{ flexShrink: 0 }}
+                    >
+                      <Image
+                        source={images.mascot}
+                        defaultSource={images.mascot}
+                        fadeDuration={0}
+                        style={[
+                          s.mascot,
+                          width < 360 && { width: 68, height: 128 },
+                        ]}
+                        resizeMode="contain"
+                        accessibilityLabel="투자안을 함께 조율하는 하나 마스코트"
+                      />
+                    </Pressable>
                   </View>
                 </View>
                 <View style={s.livePanel}>
@@ -1068,6 +1117,43 @@ export function InvestmentApp() {
           )}
         </View>
       </KeyboardAvoidingView>
+      {!!resetMessage && (
+        <View style={s.resetToast} accessibilityRole="alert" accessibilityLiveRegion="polite">
+          <Copy style={{ color: C.bg }}>{resetMessage}</Copy>
+        </View>
+      )}
+      <Modal
+        visible={resetOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => { if (!resetPending.current) setResetOpen(false); }}
+      >
+        <View style={s.modalOverlay}>
+          <View style={s.modalCard} accessibilityViewIsModal>
+            <Copy kind="heading">시연 데이터 초기화</Copy>
+            <Copy style={{ color: C.muted, marginVertical: 16 }}>
+              저장된 시연 데이터와 현재 투표, 선택, 투자 금액을 초기화하고 처음부터 다시 시작합니다.
+            </Copy>
+            {!!resetError && <Copy style={{ color: C.error, marginBottom: 16 }}>{resetError}</Copy>}
+            <Button
+              testID="confirm-demo-reset"
+              label={resetBusy ? "초기화 중…" : "초기화"}
+              disabled={resetBusy}
+              onPress={() => void resetDemo()}
+            />
+            <Pressable
+              testID="cancel-demo-reset"
+              accessibilityRole="button"
+              accessibilityState={{ disabled: resetBusy }}
+              disabled={resetBusy}
+              onPress={() => setResetOpen(false)}
+              style={s.secondaryButton}
+            >
+              <Copy kind="label" style={{ color: C.muted }}>취소</Copy>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
       <Modal
         visible={notice}
         transparent
@@ -1159,6 +1245,10 @@ export function InvestmentApp() {
 }
 
 const s = StyleSheet.create({
+  resetToast: {
+    position: "absolute", left: 22, right: 22, bottom: 112,
+    padding: 16, borderRadius: 14, backgroundColor: C.dark, zIndex: 10,
+  },
   dynamicValue: { fontFamily: "HanaBold", fontSize: 21, lineHeight: 28, color: C.green },
   planIconLarge: { width: 68, height: 68, borderRadius: 16 },
   planContentRow: { flexDirection: "row", alignItems: "center", gap: 14 },
