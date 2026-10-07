@@ -42,6 +42,7 @@ import { normalizePodDestination } from "./src/destinations";
 import { makeSeeds, DEMO_REVISION, refreshDemoData } from "./src/data";
 import { colors, styles as s } from "./src/theme";
 import { imageAssets, prefetchAppImages } from "./src/components/PodImage";
+import { DemoResetIcon } from "./src/components/DemoResetIcon";
 import { CreatePod } from "./src/screens/CreatePod";
 import { Filters } from "./src/screens/Filters";
 import { PodDetail } from "./src/screens/PodDetail";
@@ -125,6 +126,7 @@ export default function App() {
   const [data, setData] = useState<Store>(initialStore);
   const dataRef = useRef(data);
   const writeQueue = useRef(Promise.resolve());
+  const resetPending = useRef(false);
   const [ready, setReady] = useState(false);
   const [tab, setTab] = useState("explore");
   const [mineView, setMineView] = useState("전체");
@@ -197,7 +199,37 @@ export default function App() {
     const timer = setTimeout(() => setToast(""), 4500);
     return () => clearTimeout(timer);
   }, [toast]);
+  const resetDemo = async () => {
+    if (resetPending.current || !ready) return false;
+    resetPending.current = true;
+    // Run after pending saves, so an older write cannot restore deleted demo data.
+    const operation = writeQueue.current.then(async () => {
+      await AsyncStorage.removeItem(STORAGE_KEY);
+      const fresh = initialStore();
+      dataRef.current = fresh;
+      setData(fresh);
+      setSearch("");
+      setFilters(emptyFilters);
+      setMineView("전체");
+      setModal(null);
+      setDetailId(null);
+      setTab("explore");
+      setToast("시연 데이터를 초기화했어요.");
+    });
+    writeQueue.current = operation.catch(() => {});
+    try {
+      await operation;
+      return true;
+    } catch {
+      setToast("초기화하지 못했어요. 다시 시도해주세요.");
+      return false;
+    } finally {
+      resetPending.current = false;
+    }
+  };
   const update = (producer: (current: Store) => Store) => {
+    if (resetPending.current)
+      return Promise.reject(new Error("Demo reset in progress"));
     const operation = writeQueue.current.then(async () => {
       const produced = producer(dataRef.current);
       const next = {
@@ -747,7 +779,9 @@ export default function App() {
               {tab === "profile" && (
                 <>
                   <View style={{ paddingVertical: 28, alignItems: "center" }}>
-                    <View
+                    <DemoResetIcon
+                      onReset={resetDemo}
+                      testID="profile-reset-icon"
                       style={{
                         padding: 23,
                         borderRadius: 45,
@@ -759,7 +793,7 @@ export default function App() {
                         size={35}
                         color={colors.green}
                       />
-                    </View>
+                    </DemoResetIcon>
                     <Text style={[s.heading, { marginTop: 16 }]}>
                       {data.profile.name}님
                     </Text>
@@ -911,6 +945,7 @@ export default function App() {
           {modal === "profile" && (
             <Profile
               initial={data.profile}
+              onReset={resetDemo}
               onClose={() => setModal(null)}
               onSave={async (p) => {
                 await update((d) => ({ ...d, profile: p }));

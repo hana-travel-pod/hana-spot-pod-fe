@@ -3,15 +3,18 @@ import React, { useState } from "react";
 import { ScrollView, View, Switch } from "react-native";
 import { Age, Gender, Profile as ProfileType } from "../domain";
 import { Button, Chips, Field, Icon, Sheet } from "../components/UI";
+import { DemoResetIcon } from "../components/DemoResetIcon";
 import { colors, styles as s } from "../theme";
 export function Profile({
   initial,
   onClose,
   onSave,
+  onReset,
 }: {
   initial: ProfileType;
   onClose: () => void;
   onSave: (profile: ProfileType) => Promise<void>;
+  onReset: () => Promise<boolean>;
 }) {
   const [p, setP] = useState(initial);
   const [error, setError] = useState("");
@@ -53,7 +56,9 @@ export function Profile({
         contentContainerStyle={[s.page, { paddingTop: 28 }]}
       >
         <View style={{ alignItems: "center", marginBottom: 30 }}>
-          <View
+          <DemoResetIcon
+            onReset={onReset}
+            testID="profile-editor-reset-icon"
             style={{
               backgroundColor: colors.mint,
               padding: 24,
@@ -61,7 +66,7 @@ export function Profile({
             }}
           >
             <Icon name="person-outline" size={36} color={colors.green} />
-          </View>
+          </DemoResetIcon>
           <Text style={[s.title, { marginTop: 14 }]}>
             떠날 준비를 해볼까요?
           </Text>
