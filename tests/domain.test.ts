@@ -13,14 +13,27 @@ import {
   approvePendingApplications,
   calendarDays,
   shiftMonth,
+  selectRangeDate,
+  tripDuration,
+  clampApproval,
   type Pod,
 } from "../src/domain.ts";
+
+import {
+  destinations,
+  destinationFields,
+  destinationScopesOverlap,
+  findDestination,
+  normalizePodDestination,
+  searchDestinations,
+} from "../src/destinations.ts";
+import { makeSeeds, refreshDemoData, DEMO_REVISION } from "../src/data.ts";
 
 const pod: Pod = {
   id: "test",
   title: "교토 함께 걷기",
   country: "일본",
-  destination: "교토 · KIX",
+  destination: "교토 / KIX",
   category: "일본",
   startDate: "2099-04-12",
   endDate: "2099-04-16",
@@ -279,4 +292,291 @@ test("달력에서 윤년 일수, 요일 정렬, 연도 경계의 월 이동을 
   assert.equal(calendarDays("2026-08").length, 42);
   assert.equal(shiftMonth("2026-12", 1), "2027-01");
   assert.equal(shiftMonth("2027-01", -1), "2026-12");
+});
+
+test("여행 범위는 출발일부터 선택하고 앞선 날짜 및 완료 후 클릭으로 다시 시작한다", () => {
+  const start = selectRangeDate({ startDate: "", endDate: "" }, "2026-10-12");
+  assert.deepEqual(start, { startDate: "2026-10-12", endDate: "" });
+  assert.equal(tripDuration(start), null);
+  const earlier = selectRangeDate(start, "2026-10-10");
+  assert.deepEqual(earlier, { startDate: "2026-10-10", endDate: "" });
+  const complete = selectRangeDate(start, "2026-10-18");
+  assert.equal(tripDuration(complete), "6박 7일");
+  assert.deepEqual(selectRangeDate(complete, "2026-11-03"), {
+    startDate: "2026-11-03",
+    endDate: "",
+  });
+  assert.equal(tripDuration(selectRangeDate(start, "2026-10-12")), "0박 1일");
+  assert.deepEqual(selectRangeDate(start, "2026-02-30"), start);
+});
+
+test("여행 기간은 월·연도·윤년·일광절약시간 경계를 넘어 계산한다", () => {
+  for (const [startDate, endDate, expected] of [
+    ["2026-10-29", "2026-11-04", "6박 7일"],
+    ["2026-12-29", "2027-01-04", "6박 7일"],
+    ["2028-02-28", "2028-03-01", "2박 3일"],
+    ["2026-03-07", "2026-03-09", "2박 3일"],
+  ]) {
+    const range = selectRangeDate({ startDate, endDate: "" }, endDate);
+    assert.equal(tripDuration(range), expected);
+  }
+  assert.equal(
+    tripDuration({ startDate: "2026-10-18", endDate: "2026-10-12" }),
+    null,
+  );
+  assert.equal(tripDuration({ startDate: "", endDate: "2026-10-12" }), null);
+});
+
+test("목적지 고유 ID와 국가·도시·공항 연결이 일관된다", () => {
+  assert.equal(
+    new Set(destinations.map((d) => d.id)).size,
+    destinations.length,
+  );
+  for (const d of destinations) {
+    assert.equal(findDestination(d.countryId)?.type, "country");
+    if (d.type === "airport") {
+      assert.match(d.airportCode!, /^[A-Z]{3}$/);
+      assert.equal(findDestination(d.cityId)?.type, "city");
+      assert.ok(
+        d.servedCityIds?.every((id) => findDestination(id)?.type === "city"),
+      );
+    }
+  }
+});
+test("프랑스·파리·공항은 한글·영문·코드·혼합 검색으로 찾아진다", () => {
+  for (const query of ["파리", "Paris", "프랑스 파리", "France Paris"]) {
+    assert.ok(searchDestinations(query).some((d) => d.id === "city:FR-paris"));
+    assert.ok(searchDestinations(query).some((d) => d.id === "airport:CDG"));
+    assert.ok(searchDestinations(query).some((d) => d.id === "airport:ORY"));
+  }
+  assert.equal(searchDestinations("프랑스")[0].id, "country:FR");
+  assert.equal(searchDestinations("nrt")[0].id, "airport:NRT");
+  assert.equal(searchDestinations("하네다")[0].id, "airport:HND");
+  assert.equal(searchDestinations("샤를드골")[0].id, "airport:CDG");
+  assert.equal(searchDestinations("Cox Field")[0].id, "airport:PRX");
+  assert.deepEqual(searchDestinations("존재하지않는목적지"), []);
+  assert.deepEqual(searchDestinations("   "), []);
+  const parisCities = searchDestinations("Paris").filter(
+    (d) => d.type === "city",
+  );
+  assert.ok(parisCities.some((d) => d.countryId === "country:FR"));
+  assert.ok(
+    parisCities.some(
+      (d) => d.countryId === "country:US" && d.region === "텍사스",
+    ),
+  );
+});
+test("목적지 선택 하나로 지역·국가·도시·공항 범위를 저장하고 복원한다", () => {
+  for (const id of ["country:FR", "city:FR-paris", "airport:CDG"]) {
+    const selected = findDestination(id)!;
+    const created = buildPod(
+      { ...emptyPodDraft, destinationSelection: selected },
+      "selected",
+      "demo",
+    );
+    assert.equal(created.country, "프랑스");
+    assert.equal(created.category, "유럽");
+    assert.equal(created.destinationSelection?.id, id);
+    assert.equal(created.destinationSelection?.type, selected.type);
+    assert.equal(created.destinationSelection?.countryId, selected.countryId);
+    assert.equal(created.destinationSelection?.cityId, selected.cityId);
+    assert.equal(
+      created.destinationSelection?.airportCode,
+      selected.airportCode,
+    );
+    const restored = normalizePodDestination(
+      JSON.parse(JSON.stringify(created)),
+    );
+    assert.deepEqual(
+      restored.destinationSelection,
+      created.destinationSelection,
+    );
+    assert.equal(validatePod(restored), null);
+  }
+  assert.equal(
+    destinationFields(findDestination("country:FR")).destination,
+    "전체",
+  );
+  assert.equal(
+    destinationFields(findDestination("city:FR-paris")).destination,
+    "파리 / 모든 공항",
+  );
+  assert.match(
+    destinationFields(findDestination("airport:CDG")).destination,
+    /CDG/,
+  );
+  assert.deepEqual(destinationFields(undefined), {
+    destinationSelection: undefined,
+    country: "",
+    destination: "",
+    category: "미정",
+  });
+});
+test("국가·모든 공항·특정 공항 필터는 범위가 겹치는 목적지만 표시한다", () => {
+  const country = findDestination("country:FR")!;
+  const city = findDestination("city:FR-paris")!;
+  const cdg = findDestination("airport:CDG")!;
+  const ory = findDestination("airport:ORY")!;
+  assert.equal(destinationScopesOverlap(city, cdg), true);
+  assert.equal(destinationScopesOverlap(city, ory), true);
+  assert.equal(destinationScopesOverlap(country, city), true);
+  assert.equal(destinationScopesOverlap(cdg, ory), false);
+  assert.equal(
+    destinationScopesOverlap(city, findDestination("city:US-paris-tx")!),
+    false,
+  );
+  const created = buildPod(
+    { ...emptyPodDraft, destinationSelection: cdg },
+    "cdg",
+    "demo",
+  );
+  for (const destinationId of [country.id, city.id, cdg.id])
+    assert.equal(
+      matches(created, "", "전체", { ...emptyFilters, destinationId }),
+      true,
+    );
+  assert.equal(
+    matches(created, "", "전체", { ...emptyFilters, destinationId: ory.id }),
+    false,
+  );
+  const allAirports = buildPod(
+    { ...emptyPodDraft, destinationSelection: city },
+    "paris",
+    "demo",
+  );
+  assert.equal(matches(allAirports, "ORY", "전체", emptyFilters), true);
+  assert.equal(
+    matches(allAirports, "프랑스 Paris", "전체", emptyFilters),
+    true,
+  );
+  assert.equal(matches(allAirports, "東京", "전체", emptyFilters), false);
+  const france = buildPod(
+    { ...emptyPodDraft, destinationSelection: country },
+    "france",
+    "demo",
+  );
+  assert.equal(matches(france, "CDG", "전체", emptyFilters), true);
+});
+test("기존 팟은 표시 이름을 유지하고 인식 가능한 목적지만 연결한다", () => {
+  const seeds = makeSeeds();
+  const paris = seeds.find((p) => p.id === "paris")!;
+  assert.equal(paris.destination, "파리 / CDG");
+  assert.equal(paris.destinationSelection?.id, "airport:CDG");
+  for (const query of ["프랑스", "France", "Paris", "CDG"])
+    assert.equal(matches(paris, query, "전체", emptyFilters), true);
+  assert.equal(
+    matches(paris, "", "전체", {
+      ...emptyFilters,
+      destinationId: "city:FR-paris",
+    }),
+    true,
+  );
+  const legacy = { ...pod, country: "프랑스", destination: "나만의 작은 마을" };
+  assert.equal(normalizePodDestination(legacy).destinationSelection, undefined);
+  assert.equal(matches(legacy, "작은 마을", "전체", emptyFilters), true);
+  const obsolete = normalizePodDestination({
+    ...legacy,
+    destinationSelection: {
+      id: "obsolete:destination",
+      type: "airport" as const,
+    },
+  });
+  assert.equal(obsolete.destinationSelection, undefined);
+  assert.equal(obsolete.destination, legacy.destination);
+});
+test("승인 바는 1명부터 전체 인원까지 정수로 제한하고 인원 감소를 반영한다", () => {
+  assert.equal(clampApproval(0, 6), 1);
+  assert.equal(clampApproval(10, 6), 6);
+  assert.equal(clampApproval(3.6, 6), 4);
+  assert.equal(clampApproval(5, 2), 2);
+  assert.equal(clampApproval(NaN, 4), 3);
+  assert.equal(validatePod({ ...pod, approval: 1 }), null);
+  assert.equal(validatePod({ ...pod, approval: pod.capacity }), null);
+});
+
+test("더미 팟 4개의 순서와 파리 모집 일정이 요청과 일치한다", () => {
+  const seeds = makeSeeds();
+  assert.deepEqual(
+    seeds.map((p) => p.id),
+    ["osaka", "beijing", "paris", "la"],
+  );
+  const paris = seeds[2];
+  assert.equal(paris.title, "우리의 프랑스 4박 5일");
+  assert.equal(paris.capacity, 4);
+  assert.equal(paris.members, 3);
+  assert.equal(paris.investment, "공격");
+  assert.equal(paris.startDate, "2026-11-20");
+  assert.equal(paris.endDate, "2026-11-24");
+  for (let day = 1; day <= 5; day++)
+    assert.ok(paris.description.includes(`${day}일차`));
+  for (const [query, id] of [
+    ["베이징", "airport:PEK"],
+    ["Beijing", "city:CN-beijing"],
+    ["PKX", "airport:PKX"],
+    ["LA", "city:US-los-angeles"],
+    ["Los Angeles", "airport:LAX"],
+  ]) {
+    assert.ok(searchDestinations(query).some((d) => d.id === id));
+  }
+});
+
+test("이전 데모는 한번 교체하고 이후 생성 및 가입 데이터는 보존한다", () => {
+  const previous = {
+    pods: [pod],
+    applications: [
+      {
+        podId: pod.id,
+        message: "hello",
+        createdAt: "2026-10-07",
+        status: "approved" as const,
+      },
+    ],
+    saved: [pod.id],
+    profile: { name: "나의 프로필" },
+  };
+  const refreshed = refreshDemoData(previous);
+  assert.equal(refreshed.demoRevision, DEMO_REVISION);
+  assert.equal(refreshed.pods.length, 4);
+  assert.deepEqual(refreshed.applications, []);
+  assert.deepEqual(refreshed.saved, []);
+  assert.equal(refreshed.profile, previous.profile);
+  const current = {
+    ...refreshed,
+    pods: [...refreshed.pods, pod],
+    saved: ["paris"],
+    applications: previous.applications,
+  };
+  const restored = refreshDemoData(current);
+  assert.deepEqual(restored, current);
+});
+
+test("저장된 미국 팟의 사진만 교체하고 가입 및 저장 상태를 보존한다", () => {
+  const previous = {
+    demoRevision: DEMO_REVISION,
+    pods: [
+      {
+        ...pod,
+        id: "la",
+        country: "미국",
+        image: "https://old-photo.example/la.jpg",
+      },
+      pod,
+    ],
+    applications: [
+      {
+        podId: "la",
+        message: "함께해요",
+        createdAt: "2026-10-07",
+        status: "approved" as const,
+      },
+    ],
+    saved: ["la"],
+  };
+  const restored = refreshDemoData(previous);
+  assert.equal(restored.pods[0].image, "asset:los-angeles");
+  assert.equal(restored.pods[0].members, previous.pods[0].members);
+  assert.deepEqual(restored.pods[1], pod);
+  assert.deepEqual(restored.applications, previous.applications);
+  assert.deepEqual(restored.saved, previous.saved);
+  assert.deepEqual(refreshDemoData(restored), restored);
 });

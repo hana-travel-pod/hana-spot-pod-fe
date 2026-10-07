@@ -1,16 +1,17 @@
+import { AppText as Text } from "./src/components/Typography";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   ScrollView,
-  Text,
   TextInput,
   View,
   Platform,
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
-import { LinearGradient } from "expo-linear-gradient";
+import { useFonts } from "expo-font";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   Badge,
@@ -32,7 +33,8 @@ import {
   approvePendingApplications,
   validDate,
 } from "./src/domain";
-import { categories, makeSeeds } from "./src/data";
+import { normalizePodDestination } from "./src/destinations";
+import { makeSeeds, DEMO_REVISION, refreshDemoData } from "./src/data";
 import { colors, styles as s } from "./src/theme";
 import { CreatePod } from "./src/screens/CreatePod";
 import { Filters } from "./src/screens/Filters";
@@ -41,6 +43,7 @@ import { Profile } from "./src/screens/Profile";
 
 type Store = {
   version: 1;
+  demoRevision?: number;
   pods: Pod[];
   applications: Application[];
   saved: string[];
@@ -49,6 +52,7 @@ type Store = {
 const STORAGE_KEY = "hana-spot-pod:v1";
 const initialStore = (): Store => ({
   version: 1,
+  demoRevision: DEMO_REVISION,
   pods: makeSeeds(),
   applications: [],
   saved: [],
@@ -105,6 +109,11 @@ function isStore(value: unknown): value is Store {
 }
 
 export default function App() {
+  const [fontsLoaded, fontError] = useFonts({
+    "Hana2-Regular": require("./assets/fonts/Hana2-Regular.otf"),
+    "Hana2-Medium": require("./assets/fonts/Hana2-Medium.otf"),
+    "Hana2-Bold": require("./assets/fonts/Hana2-Bold.otf"),
+  });
   const [data, setData] = useState<Store>(initialStore);
   const dataRef = useRef(data);
   const writeQueue = useRef(Promise.resolve());
@@ -112,7 +121,6 @@ export default function App() {
   const [tab, setTab] = useState("explore");
   const [mineView, setMineView] = useState("전체");
   const [search, setSearch] = useState("");
-  const [category, setCategory] = useState("전체");
   const [filters, setFilters] = useState<FilterType>(emptyFilters);
   const [modal, setModal] = useState<"create" | "filters" | "profile" | null>(
     null,
@@ -126,15 +134,24 @@ export default function App() {
         if (!active || !raw) return;
         const parsed: unknown = JSON.parse(raw);
         if (!isStore(parsed)) throw new Error("Invalid data");
+        const refreshed = refreshDemoData(parsed);
+        const restoredPods = refreshed.pods.map(normalizePodDestination);
         const normalized = {
-          ...parsed,
+          ...refreshed,
           ...approvePendingApplications(
-            parsed.pods,
-            parsed.applications,
-            parsed.profile,
+            restoredPods,
+            refreshed.applications,
+            refreshed.profile,
           ),
         };
         if (
+          parsed.demoRevision !== DEMO_REVISION ||
+          restoredPods.some(
+            (p, i) =>
+              p.image !== parsed.pods[i].image ||
+              JSON.stringify(p.destinationSelection) !==
+                JSON.stringify(parsed.pods[i].destinationSelection),
+          ) ||
           normalized.applications.some(
             (a, i) => a.status !== parsed.applications[i].status,
           )
@@ -237,7 +254,7 @@ export default function App() {
     ([k, v]) => v !== emptyFilters[k as keyof FilterType],
   ).length;
   const visiblePods = data.pods.filter((p) =>
-    matches(p, search, category, filters),
+    matches(p, search, "전체", filters),
   );
   const selectedPod = data.pods.find((p) => p.id === detailId);
   const myPods = data.pods.filter(
@@ -292,7 +309,7 @@ export default function App() {
         <View style={s.shell}>
           <View
             style={{
-              paddingHorizontal: 24,
+              paddingHorizontal: 22,
               paddingTop: 18,
               paddingBottom: 16,
               flexDirection: "row",
@@ -306,27 +323,11 @@ export default function App() {
               onPress={() => setTab("explore")}
               style={[s.row, { gap: 8 }]}
             >
-              <View
-                style={{
-                  width: 27,
-                  height: 27,
-                  flexDirection: "row",
-                  flexWrap: "wrap",
-                  gap: 3,
-                }}
-              >
-                {[0, 1, 2, 3].map((i) => (
-                  <View
-                    key={i}
-                    style={{
-                      width: 11,
-                      height: 11,
-                      borderRadius: i === 3 ? 3 : 6,
-                      backgroundColor: i === 3 ? "#9AE0CC" : colors.green,
-                    }}
-                  />
-                ))}
-              </View>
+              <Image
+                source={require("./assets/images/logo.png")}
+                accessibilityLabel="하나 트래블 팟 로고"
+                style={{ width: 42, height: 42, borderRadius: 12 }}
+              />
               <Text
                 style={{
                   color: colors.dark,
@@ -335,7 +336,7 @@ export default function App() {
                   fontWeight: "800",
                 }}
               >
-                hana <Text style={{ fontWeight: "400" }}>spot pod</Text>
+                하나 트래블 팟
               </Text>
             </Pressable>
             <Pressable
@@ -351,7 +352,7 @@ export default function App() {
               <Icon name="person-outline" size={19} />
             </Pressable>
           </View>
-          {!ready ? (
+          {!ready || (!fontsLoaded && !fontError) ? (
             <View
               style={{
                 flex: 1,
@@ -359,54 +360,109 @@ export default function App() {
                 justifyContent: "center",
               }}
             >
-              <ActivityIndicator color={colors.green} />
+              <ActivityIndicator
+                color={!fontsLoaded ? colors.fontSpinner : colors.green}
+              />
               <Text style={[s.muted, { marginTop: 12 }]}>
-                여행 팟을 불러오고 있어요
+                {!fontsLoaded
+                  ? "글꼴을 불러오고 있어요"
+                  : "여행 팟을 불러오고 있어요"}
               </Text>
             </View>
           ) : (
             <ScrollView
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={s.page}
+              stickyHeaderIndices={tab === "explore" ? [1] : undefined}
             >
               {tab === "explore" && (
-                <>
-                  <View style={{ marginTop: 8, marginBottom: 24 }}>
-                    <Text
-                      style={[
-                        s.muted,
-                        { color: colors.green, marginBottom: 8 },
-                      ]}
-                    >
-                      함께 떠나면, 더 넓어지는 여행
-                    </Text>
-                    <Text
-                      style={{
-                        color: colors.dark,
-                        fontSize: 30,
-                        fontWeight: "800",
-                        letterSpacing: -1.3,
-                        lineHeight: 40,
-                      }}
-                    >
-                      좋은 여행은,{"\n"}좋은 동행에서.
-                    </Text>
-                  </View>
-                  <LinearGradient
-                    colors={["#E4F6EE", "#EDF7DF"]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
+                <View style={{ marginTop: 8, marginBottom: 16 }}>
+                  <Text
+                    style={[s.muted, { color: colors.green, marginBottom: 8 }]}
+                  >
+                    함께 떠나면, 더 즐거운 여행
+                  </Text>
+                  <Text
                     style={{
-                      borderRadius: 24,
-                      padding: 21,
-                      minHeight: 164,
-                      overflow: "hidden",
+                      color: colors.dark,
+                      fontSize: 28,
+                      fontWeight: "800",
+                      letterSpacing: -1.3,
+                      lineHeight: 38,
                     }}
                   >
-                    <View style={{ zIndex: 2, width: "68%" }}>
+                    좋은 여행은,{"\n"}하나 트래블 팟에서.
+                  </Text>
+                </View>
+              )}
+              {tab === "explore" && (
+                <View style={s.stickySearch}>
+                  <View
+                    style={[
+                      s.row,
+                      {
+                        backgroundColor: colors.white,
+                        borderWidth: 1,
+                        borderColor: colors.line,
+                        borderRadius: 12,
+                        paddingHorizontal: 14,
+                        gap: 9,
+                      },
+                    ]}
+                  >
+                    <Icon
+                      name="search-outline"
+                      size={20}
+                      color={colors.muted}
+                    />
+                    <TextInput
+                      accessibilityLabel="목적지 또는 팟 이름 검색"
+                      placeholder="어디로 떠나고 싶으세요?"
+                      placeholderTextColor={colors.muted}
+                      value={search}
+                      onChangeText={setSearch}
+                      returnKeyType="search"
+                      style={{
+                        flex: 1,
+                        fontFamily: "Hana2-Regular",
+                        minWidth: 0,
+                        minHeight: 56,
+                        fontSize: 16,
+                        color: colors.text,
+                        ...Platform.select({
+                          web: { outlineStyle: "none" as never },
+                        }),
+                      }}
+                    />
+                    {!!search && (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="검색어 지우기"
+                        onPress={() => setSearch("")}
+                        hitSlop={10}
+                      >
+                        <Icon
+                          name="close-circle"
+                          size={18}
+                          color={colors.muted}
+                        />
+                      </Pressable>
+                    )}
+                  </View>
+                </View>
+              )}
+              {tab === "explore" && (
+                <View>
+                  <View
+                    style={[
+                      s.recommendation,
+                      { minHeight: 180, overflow: "hidden" },
+                    ]}
+                  >
+                    <View style={{ zIndex: 2, width: "72%" }}>
                       <Text
                         style={{
-                          fontSize: 10,
+                          fontSize: 13,
                           fontWeight: "700",
                           letterSpacing: 1.7,
                           color: colors.green,
@@ -434,7 +490,7 @@ export default function App() {
                         <Text
                           style={{
                             color: colors.green,
-                            fontSize: 12,
+                            fontSize: 13,
                             fontWeight: "700",
                           }}
                         >
@@ -454,7 +510,7 @@ export default function App() {
                         bottom: -30,
                         width: 150,
                         height: 150,
-                        backgroundColor: "#D1EBC2",
+                        backgroundColor: colors.white,
                         borderRadius: 80,
                       }}
                     />
@@ -465,105 +521,27 @@ export default function App() {
                         top: 22,
                         width: 44,
                         height: 44,
-                        backgroundColor: "#FFD680",
+                        backgroundColor: colors.bg,
                         borderRadius: 25,
                       }}
                     />
-                    <View
+                    <Image
+                      source={require("./assets/images/travel-airplane.png")}
                       style={{
                         position: "absolute",
-                        right: 12,
-                        bottom: 20,
-                        transform: [{ rotate: "-18deg" }],
+                        right: -3,
+                        bottom: 2,
+                        width: 140,
+                        height: 140,
                       }}
-                    >
-                      <Icon name="airplane" size={96} color={colors.green} />
-                    </View>
+                      resizeMode="contain"
+                    />
                     <View
                       style={{ position: "absolute", right: 105, bottom: 30 }}
                     >
-                      <Icon name="sparkles" size={20} color="#70B694" />
+                      <Icon name="sparkles" size={20} color={colors.green} />
                     </View>
-                  </LinearGradient>
-                  <View
-                    style={[
-                      s.row,
-                      {
-                        backgroundColor: colors.bg,
-                        borderRadius: 15,
-                        marginTop: 22,
-                        marginBottom: 18,
-                        paddingHorizontal: 14,
-                        gap: 9,
-                      },
-                    ]}
-                  >
-                    <Icon
-                      name="search-outline"
-                      size={20}
-                      color={colors.muted}
-                    />
-                    <TextInput
-                      accessibilityLabel="목적지 또는 팟 이름 검색"
-                      placeholder="어디로 떠나고 싶으세요?"
-                      placeholderTextColor="#9BA5A7"
-                      value={search}
-                      onChangeText={setSearch}
-                      returnKeyType="search"
-                      style={{
-                        flex: 1,
-                        minHeight: 50,
-                        fontSize: 14,
-                        color: colors.text,
-                        ...Platform.select({
-                          web: { outlineStyle: "none" as never },
-                        }),
-                      }}
-                    />
-                    {!!search && (
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel="검색어 지우기"
-                        onPress={() => setSearch("")}
-                        hitSlop={10}
-                      >
-                        <Icon
-                          name="close-circle"
-                          size={18}
-                          color={colors.muted}
-                        />
-                      </Pressable>
-                    )}
                   </View>
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    style={{ marginHorizontal: -24 }}
-                    contentContainerStyle={{ paddingHorizontal: 24, gap: 8 }}
-                  >
-                    {categories.map((c) => (
-                      <Pressable
-                        key={c}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: category === c }}
-                        onPress={() => setCategory(c)}
-                        style={[
-                          s.chip,
-                          { paddingHorizontal: 19 },
-                          category === c && s.chipActive,
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            s.chipText,
-                            category === c && s.chipTextActive,
-                          ]}
-                        >
-                          {c}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </ScrollView>
                   <View
                     style={[s.between, { marginTop: 27, marginBottom: 16 }]}
                   >
@@ -589,7 +567,7 @@ export default function App() {
                       <Text
                         style={{
                           color: activeFilters ? colors.green : colors.muted,
-                          fontSize: 12,
+                          fontSize: 13,
                         }}
                       >
                         필터{activeFilters ? ` ${activeFilters}` : ""}
@@ -602,7 +580,7 @@ export default function App() {
                       onPress={() => setFilters(emptyFilters)}
                       style={{ alignSelf: "flex-start", marginBottom: 13 }}
                     >
-                      <Text style={{ color: colors.green, fontSize: 12 }}>
+                      <Text style={{ color: colors.green, fontSize: 13 }}>
                         적용한 조건 초기화 ×
                       </Text>
                     </Pressable>
@@ -614,7 +592,6 @@ export default function App() {
                         "다른 여행 지역이나 예산으로 찾아보세요.",
                         () => {
                           setSearch("");
-                          setCategory("전체");
                           setFilters(emptyFilters);
                         },
                         "탐색 조건 초기화",
@@ -625,11 +602,11 @@ export default function App() {
                       color={colors.muted}
                       size={16}
                     />
-                    <Text style={[s.muted, { flex: 1, fontSize: 11 }]}>
+                    <Text style={[s.muted, { flex: 1, fontSize: 13 }]}>
                       기본 경비는 1인 기준이며 투자금과 예치금은 제외돼요.
                     </Text>
                   </View>
-                </>
+                </View>
               )}
               {tab === "mine" && (
                 <>
@@ -649,6 +626,14 @@ export default function App() {
                       values={["전체", "가입한 팟", "만든 팟"]}
                       selected={mineView}
                       onChange={setMineView}
+                      selectedColors={{
+                        전체: { background: colors.mint, accent: colors.green },
+                        "가입한 팟": {
+                          background: "#EAF2F8",
+                          accent: "#356D91",
+                        },
+                        "만든 팟": { background: "#F2EDF7", accent: "#795A93" },
+                      }}
                     />
                   </View>
                   {displayedMyPods.length
@@ -687,7 +672,7 @@ export default function App() {
                                 <Text
                                   style={[
                                     s.muted,
-                                    { fontSize: 11, marginVertical: 10 },
+                                    { fontSize: 13, marginVertical: 10 },
                                   ]}
                                 >
                                   참가 조건 불일치, 정원 초과 또는 모집 종료로
@@ -768,7 +753,7 @@ export default function App() {
                       {data.profile.name}님
                     </Text>
                     <Text style={[s.muted, { marginTop: 8 }]}>
-                      {data.profile.gender} · {data.profile.age} ·{" "}
+                      {data.profile.gender} / {data.profile.age} /{" "}
                       {data.profile.verified ? "데모 인증 완료" : "미인증"}
                     </Text>
                   </View>
@@ -777,71 +762,6 @@ export default function App() {
                     secondary
                     onPress={() => setModal("profile")}
                   />
-                  <View
-                    style={[
-                      s.between,
-                      {
-                        backgroundColor: colors.bg,
-                        borderRadius: 20,
-                        padding: 25,
-                        marginTop: 25,
-                      },
-                    ]}
-                  >
-                    {[
-                      {
-                        title: "만든 팟",
-                        count: data.pods.filter((p) => p.host === "나").length,
-                      },
-                      {
-                        title: "가입한 팟",
-                        count: joinedPods.length,
-                      },
-                      { title: "저장한 팟", count: data.saved.length },
-                    ].map((item) => (
-                      <Pressable
-                        key={item.title}
-                        accessibilityRole="button"
-                        accessibilityLabel={`${item.title} 목록 보기`}
-                        onPress={() => {
-                          if (item.title === "저장한 팟") setTab("saved");
-                          else {
-                            setTab("mine");
-                            setMineView(
-                              item.title === "만든 팟"
-                                ? "만든 팟"
-                                : "가입한 팟",
-                            );
-                          }
-                        }}
-                        style={{ alignItems: "center", gap: 8 }}
-                      >
-                        <Text
-                          style={{
-                            color: colors.green,
-                            fontSize: 25,
-                            fontWeight: "800",
-                          }}
-                        >
-                          {item.count}
-                        </Text>
-                        <Text style={s.muted}>{item.title}</Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                  <Text
-                    style={[s.muted, { textAlign: "center", marginTop: 10 }]}
-                  >
-                    숫자를 누르면 해당 팟 목록을 볼 수 있어요.
-                  </Text>
-                  <View style={s.notice}>
-                    <Text style={s.label}>hana spot pod · 프로토타입</Text>
-                    <Text style={s.muted}>
-                      여행 조건을 맞추고, 함께할 사람을 찾는 새로운 시작.
-                      데이터는 현재 기기에 저장되며 다른 사용자와 공유되지
-                      않아요.
-                    </Text>
-                  </View>
                 </>
               )}
             </ScrollView>
@@ -928,12 +848,12 @@ export default function App() {
               >
                 <Icon
                   name={tab === item.id ? item.active : item.icon}
-                  color={tab === item.id ? colors.green : "#A1AAAC"}
+                  color={tab === item.id ? colors.green : colors.muted}
                   size={23}
                 />
                 <Text
                   style={{
-                    fontSize: 10,
+                    fontSize: 13,
                     fontWeight: tab === item.id ? "700" : "400",
                     color: tab === item.id ? colors.green : colors.muted,
                   }}

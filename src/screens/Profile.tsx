@@ -1,5 +1,6 @@
+import { AppText as Text } from "../components/Typography";
 import React, { useState } from "react";
-import { ScrollView, Text, View, Switch } from "react-native";
+import { ScrollView, View, Switch } from "react-native";
 import { Age, Gender, Profile as ProfileType } from "../domain";
 import { Button, Chips, Field, Icon, Sheet } from "../components/UI";
 import { colors, styles as s } from "../theme";
@@ -95,14 +96,8 @@ export function Profile({
             accessibilityLabel="데모 본인인증"
             value={p.verified}
             onValueChange={(v) => setP({ ...p, verified: v })}
-            trackColor={{ false: "#DDE4E2", true: colors.green }}
+            trackColor={{ false: colors.line, true: colors.green }}
           />
-        </View>
-        <View style={s.notice}>
-          <Text style={s.muted}>
-            프로토타입 체험을 위한 프로필이에요. 실제 본인인증 서비스와 연결되어
-            있지 않으며, 설정한 정보로 참가 조건을 비교해요.
-          </Text>
         </View>
       </ScrollView>
     </Sheet>

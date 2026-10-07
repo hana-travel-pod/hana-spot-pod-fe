@@ -1,14 +1,7 @@
+import { AppText as Text } from "../components/Typography";
 import React, { useState } from "react";
-import { ScrollView, Text, View, Switch } from "react-native";
-import {
-  Badge,
-  Button,
-  Chips,
-  DetailRow,
-  Field,
-  Icon,
-  Sheet,
-} from "../components/UI";
+import { ScrollView, View, Switch } from "react-native";
+import { Button, Chips, DetailRow, Field, Icon, Sheet } from "../components/UI";
 import {
   Age,
   Gender,
@@ -22,9 +15,14 @@ import {
   destinationLabel,
   travelDateLabel,
   budgetLabel,
+  clampApproval,
 } from "../domain";
-import { DateField } from "../components/DateField";
-import { categories, destinationImages } from "../data";
+import { DateRangeField } from "../components/DateRangeField";
+import { DestinationSearch } from "../components/DestinationSearch";
+import { ApprovalSlider } from "../components/ApprovalSlider";
+import { destinationFields, findDestination } from "../destinations";
+import { InvestmentCard } from "../components/InvestmentCard";
+import { destinationImages } from "../data";
 import { colors, styles as s } from "../theme";
 
 export function CreatePod({
@@ -38,6 +36,7 @@ export function CreatePod({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ ...emptyPodDraft });
+  const [destinationPending, setDestinationPending] = useState(false);
   const set = <K extends keyof typeof form>(
     key: K,
     value: (typeof form)[K],
@@ -48,15 +47,23 @@ export function CreatePod({
   const pod = buildPod(
     form,
     `pod-${Date.now()}`,
-    form.category === "동남아"
-      ? destinationImages.bali
-      : form.category === "유럽"
-        ? destinationImages.europe
-        : form.category === "국내"
-          ? destinationImages.korea
-          : destinationImages.japan,
+    form.country === "미국"
+      ? destinationImages.america
+      : form.country === "중국"
+        ? destinationImages.china
+        : form.category === "동남아"
+          ? destinationImages.bali
+          : form.category === "유럽"
+            ? destinationImages.europe
+            : form.category === "국내"
+              ? destinationImages.korea
+              : destinationImages.japan,
   );
   const next = async () => {
+    if (step === 0 && destinationPending) {
+      setError("검색 결과에서 여행 목적지를 선택하거나 검색어를 지워주세요.");
+      return;
+    }
     const issue = validatePod(
       step === 0 ? { ...pod, deposit: 0, approval: 1 } : pod,
     );
@@ -139,7 +146,7 @@ export function CreatePod({
               <Text
                 style={{
                   color: i === step ? colors.green : colors.muted,
-                  fontSize: 11,
+                  fontSize: 13,
                 }}
               >
                 {i + 1}. {v}
@@ -174,60 +181,53 @@ export function CreatePod({
               value={form.title}
               onChangeText={(v) => set("title", v)}
             />
-            <View style={s.field}>
-              <Text style={s.label}>여행 지역</Text>
-              <Chips
-                values={["미정", ...categories.slice(1)]}
-                selected={form.category}
-                onChange={(v) => set("category", v)}
-              />
-            </View>
-            <Field
-              label="국가 (선택)"
-              placeholder="예: 일본"
-              value={form.country}
-              onChangeText={(v) => set("country", v)}
-              maxLength={40}
-            />
-            <Field
-              label="도시 또는 공항 (선택)"
-              placeholder="예: 교토 또는 간사이 공항 (KIX)"
-              value={form.destination}
-              onChangeText={(v) => set("destination", v)}
-              maxLength={60}
-            />
-            <DateField
-              label="여행 시작일 (선택)"
-              value={form.startDate}
-              minimumDate={today()}
-              onChange={(v) => {
-                setForm((f) => ({
-                  ...f,
-                  startDate: v,
-                  endDate: v && f.endDate && f.endDate < v ? "" : f.endDate,
+            <DestinationSearch
+              value={findDestination(form.destinationSelection?.id)}
+              onPendingChange={setDestinationPending}
+              onChange={(destination) => {
+                setForm((current) => ({
+                  ...current,
+                  ...destinationFields(destination),
                 }));
                 setError("");
               }}
             />
-            <DateField
-              label="여행 종료일 (선택)"
-              value={form.endDate}
-              minimumDate={form.startDate || today()}
-              onChange={(v) => set("endDate", v)}
+            <DateRangeField
+              value={{ startDate: form.startDate, endDate: form.endDate }}
+              minimumDate={today()}
+              onChange={(range) => {
+                setForm((current) => ({ ...current, ...range }));
+                setError("");
+              }}
             />
             <Field
               label="모집 인원 (선택)"
-              hint="미입력 시 4명 · 개설자를 포함한 전체 인원 · 2~20명"
+              hint="미입력 시 4명 / 개설자를 포함한 전체 인원 / 2~20명"
               placeholder="기본 4명"
               keyboardType="number-pad"
               value={form.capacity}
-              onChangeText={(v) => set("capacity", v)}
+              onChangeText={(v) => {
+                setForm((current) => ({
+                  ...current,
+                  capacity: v,
+                  approval:
+                    current.approval &&
+                    Number.isInteger(Number(v)) &&
+                    Number(v) >= 2 &&
+                    Number(v) <= 20
+                      ? String(
+                          clampApproval(Number(current.approval), Number(v)),
+                        )
+                      : current.approval,
+                }));
+                setError("");
+              }}
               maxLength={2}
             />
             <Field
               label="1인 예상 기본 경비 (원) (선택)"
               placeholder="예: 850000"
-              hint="미입력 시 미정 · 항공·숙박·기본 식비 포함, 투자금·예치금 제외"
+              hint="미입력 시 미정 / 항공 / 숙박 / 기본 식비 포함, 투자금 / 예치금 제외"
               keyboardType="number-pad"
               value={form.budget}
               onChangeText={(v) => set("budget", v)}
@@ -262,7 +262,7 @@ export function CreatePod({
                 accessibilityLabel="본인인증 필수"
                 value={form.verified}
                 onValueChange={(v) => set("verified", v)}
-                trackColor={{ false: "#DDE4E2", true: colors.green }}
+                trackColor={{ false: colors.line, true: colors.green }}
               />
             </View>
             <View style={[s.between, s.field]}>
@@ -274,7 +274,7 @@ export function CreatePod({
                 accessibilityLabel="투자 포함"
                 value={form.investment !== "없음"}
                 onValueChange={(v) => set("investment", v ? "안정" : "없음")}
-                trackColor={{ false: "#DDE4E2", true: colors.green }}
+                trackColor={{ false: colors.line, true: colors.green }}
               />
             </View>
             {form.investment !== "없음" && (
@@ -285,6 +285,7 @@ export function CreatePod({
                   selected={form.investment}
                   onChange={(v) => set("investment", v)}
                 />
+                <InvestmentCard investment={form.investment} />
                 <Text style={[s.muted, { marginTop: 10 }]}>
                   모집 단계의 희망 방향이에요. 실제 상품과 금액은 팟 구성 후
                   별도로 합의해요.
@@ -293,14 +294,10 @@ export function CreatePod({
             )}
             <View style={s.divider} />
             <Text style={[s.title, { marginBottom: 22 }]}>우리 팟의 약속</Text>
-            <Field
-              label="의사결정 승인 인원 (선택)"
-              value={form.approval}
-              onChangeText={(v) => set("approval", v)}
-              keyboardType="number-pad"
-              maxLength={2}
-              placeholder="미입력 시 과반수"
-              hint={`전체 ${pod.capacity}명 중 찬성 인원 · 미입력 시 과반수 · 모집 완료 후 적용`}
+            <ApprovalSlider
+              value={pod.approval}
+              maximum={pod.capacity}
+              onChange={(value) => set("approval", String(value))}
             />
             <Field
               label="노쇼 방지 예치금 (원) (선택)"
@@ -309,7 +306,7 @@ export function CreatePod({
               keyboardType="number-pad"
               maxLength={9}
               placeholder="미입력 시 0원"
-              hint="미입력 시 예치금 없음 · 납부·반환·취소 기준은 팟 구성 후 별도 합의해요."
+              hint="미입력 시 예치금 없음 / 납부 / 반환 / 취소 기준은 팟 구성 후 별도 합의해요."
             />
             <Field
               label="모임 상세 내용 (선택)"
@@ -339,8 +336,8 @@ export function CreatePod({
             />
             <DetailRow label="1인 기본 경비" value={budgetLabel(pod.budget)} />
             <DetailRow
-              label="성별 · 연령"
-              value={`${form.gender} · ${form.age}`}
+              label="성별 / 연령"
+              value={`${form.gender} / ${form.age}`}
             />
             <DetailRow
               label="본인인증"
@@ -367,13 +364,6 @@ export function CreatePod({
             <Text style={s.body}>
               {pod.description || "자세한 여행 계획은 함께 정해요."}
             </Text>
-            <View style={s.notice}>
-              <Badge>모집을 시작해요</Badge>
-              <Text style={[s.muted, { marginTop: 8 }]}>
-                팟을 만들면 탐색 목록에 표시돼요. 참가 조건을 충족하면 자동으로
-                가입돼요. 실제 결제와 투자는 진행하지 않아요.
-              </Text>
-            </View>
           </>
         )}
       </ScrollView>

@@ -1,3 +1,11 @@
+import {
+  type DestinationSelection,
+  destinationFields,
+  findDestination,
+  podMatchesDestination,
+  podMatchesSearch,
+} from "./destinations.ts";
+
 export type Investment = "없음" | "안정" | "균형" | "공격";
 export type Gender = "제한 없음" | "여성" | "남성";
 export type Age = "제한 없음" | "20대" | "30대" | "40대" | "50대 이상";
@@ -6,6 +14,7 @@ export type Pod = {
   title: string;
   country: string;
   destination: string;
+  destinationSelection?: DestinationSelection;
   category: string;
   startDate: string;
   endDate: string;
@@ -35,6 +44,7 @@ export type Profile = {
   verified: boolean;
 };
 export type Filters = {
+  destinationId: string;
   investment: "전체" | Investment;
   budget: string;
   gender: "전체" | Gender;
@@ -44,6 +54,7 @@ export type Filters = {
   endDate: string;
 };
 export const emptyFilters: Filters = {
+  destinationId: "",
   investment: "전체",
   budget: "",
   gender: "전체",
@@ -61,7 +72,7 @@ export const defaultProfile: Profile = {
 export const money = (value: number) => value.toLocaleString("ko-KR");
 export const dateLabel = (value: string) => value.slice(5).replace("-", ".");
 export const destinationLabel = (pod: Pick<Pod, "country" | "destination">) =>
-  [pod.country, pod.destination].filter(Boolean).join(" · ") || "목적지 미정";
+  [pod.country, pod.destination].filter(Boolean).join(" / ") || "목적지 미정";
 export const travelDateLabel = (pod: Pick<Pod, "startDate" | "endDate">) =>
   !pod.startDate && !pod.endDate
     ? "여행 일정 미정"
@@ -73,6 +84,7 @@ export type PodDraft = {
   title: string;
   country: string;
   destination: string;
+  destinationSelection?: DestinationSelection;
   category: string;
   startDate: string;
   endDate: string;
@@ -109,13 +121,20 @@ export function buildPod(draft: PodDraft, id: string, image: string): Pod {
   const capacity = draft.capacity.trim() ? Number(draft.capacity) : 4;
   return {
     ...draft,
+    ...(draft.destinationSelection
+      ? destinationFields(draft.destinationSelection)
+      : {}),
     id,
     image,
     host: "나",
     members: 1,
     title: draft.title.trim() || "함께 떠나는 여행",
-    country: draft.country.trim(),
-    destination: draft.destination.trim(),
+    country: draft.destinationSelection
+      ? destinationFields(draft.destinationSelection).country
+      : draft.country.trim(),
+    destination: draft.destinationSelection
+      ? destinationFields(draft.destinationSelection).destination
+      : draft.destination.trim(),
     description: draft.description.trim(),
     capacity,
     budget: draft.budget.trim() ? Number(draft.budget) : 0,
@@ -124,6 +143,17 @@ export function buildPod(draft: PodDraft, id: string, image: string): Pod {
       ? Number(draft.approval)
       : Math.floor(capacity / 2) + 1,
   };
+}
+
+export function clampApproval(value: number, capacity: number) {
+  const maximum = Number.isInteger(capacity) && capacity >= 1 ? capacity : 4;
+  return Math.max(
+    1,
+    Math.min(
+      maximum,
+      Math.round(Number.isFinite(value) ? value : Math.floor(maximum / 2) + 1),
+    ),
+  );
 }
 
 export function calendarDays(month: string): (string | null)[] {
@@ -156,6 +186,30 @@ export function today() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
+export type DateRange = { startDate: string; endDate: string };
+
+export function selectRangeDate(range: DateRange, date: string): DateRange {
+  if (!validDate(date)) return range;
+  if (!range.startDate || range.endDate || date < range.startDate) {
+    return { startDate: date, endDate: "" };
+  }
+  return { startDate: range.startDate, endDate: date };
+}
+
+export function tripDuration(range: DateRange): string | null {
+  if (
+    !validDate(range.startDate) ||
+    !validDate(range.endDate) ||
+    range.endDate < range.startDate
+  )
+    return null;
+  // UTC date-only arithmetic keeps nights correct across daylight-saving changes.
+  const nights =
+    (Date.parse(range.endDate + "T00:00:00Z") -
+      Date.parse(range.startDate + "T00:00:00Z")) /
+    86400000;
+  return `${nights}박 ${nights + 1}일`;
+}
 export function eligibility(pod: Pod, profile: Profile): string | null {
   if (pod.members >= pod.capacity) return "모집 인원이 모두 찼어요.";
   if (
@@ -182,9 +236,10 @@ export function matches(
       (pod.startDate || pod.endDate) >= today()) &&
     pod.members < pod.capacity &&
     (category === "전체" || pod.category === category) &&
-    `${pod.title} ${pod.country} ${pod.destination}`
-      .toLowerCase()
-      .includes(search.trim().toLowerCase()) &&
+    podMatchesSearch(pod, search) &&
+    (!filters.destinationId ||
+      (!!findDestination(filters.destinationId) &&
+        podMatchesDestination(pod, findDestination(filters.destinationId)!))) &&
     (filters.investment === "전체" || pod.investment === filters.investment) &&
     (!filters.budget ||
       (pod.budget > 0 && pod.budget <= Number(filters.budget))) &&

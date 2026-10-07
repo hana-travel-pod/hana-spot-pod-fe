@@ -1,7 +1,7 @@
+import { AppText as Text } from "./Typography";
 import React from "react";
 import {
   Pressable,
-  Text,
   TextInput,
   View,
   Image,
@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { colors, styles as s } from "../theme";
+import { podImageSource } from "./PodImage";
 import {
   Pod,
   today,
@@ -74,14 +75,12 @@ export function Button({
       onPress={onPress}
       style={({ pressed }) => [
         s.button,
-        secondary && { backgroundColor: colors.mint },
+        secondary && { backgroundColor: colors.dark },
         { opacity: disabled ? 0.4 : pressed ? 0.75 : 1 },
       ]}
     >
-      {icon && <Icon name={icon} color={secondary ? colors.green : "#fff"} />}
-      <Text style={[s.buttonText, secondary && { color: colors.green }]}>
-        {title}
-      </Text>
+      {icon && <Icon name={icon} color={colors.white} />}
+      <Text style={s.buttonText}>{title}</Text>
     </Pressable>
   );
 }
@@ -93,8 +92,8 @@ export function Badge({
   purple?: boolean;
 }) {
   return (
-    <View style={[s.badge, purple && { backgroundColor: "#F0EFFF" }]}>
-      <Text style={[s.badgeText, purple && { color: colors.purple }]}>
+    <View style={[s.badge, purple && { backgroundColor: colors.iconBg }]}>
+      <Text style={[s.badgeText, purple && { color: colors.text }]}>
         {children}
       </Text>
     </View>
@@ -104,10 +103,12 @@ export function Chips<T extends string>({
   values,
   selected,
   onChange,
+  selectedColors,
 }: {
   values: readonly T[];
   selected: T;
   onChange: (v: T) => void;
+  selectedColors?: Partial<Record<T, { background: string; accent: string }>>;
 }) {
   return (
     <View style={s.chips}>
@@ -117,9 +118,26 @@ export function Chips<T extends string>({
           accessibilityRole="button"
           accessibilityState={{ selected: v === selected }}
           onPress={() => onChange(v)}
-          style={[s.chip, selected === v && s.chipActive]}
+          style={[
+            s.chip,
+            selected === v && s.chipActive,
+            selected === v &&
+              selectedColors?.[v] && {
+                backgroundColor: selectedColors[v].background,
+                borderColor: selectedColors[v].accent,
+              },
+          ]}
         >
-          <Text style={[s.chipText, selected === v && s.chipTextActive]}>
+          <Text
+            style={[
+              s.chipText,
+              selected === v && s.chipTextActive,
+              selected === v &&
+                selectedColors?.[v] && {
+                  color: selectedColors[v].accent,
+                },
+            ]}
+          >
             {v}
           </Text>
         </Pressable>
@@ -137,7 +155,7 @@ export function Field({
       <Text style={s.label}>{label}</Text>
       <TextInput
         accessibilityLabel={label}
-        placeholderTextColor="#A1ABAD"
+        placeholderTextColor={colors.muted}
         {...props}
         style={[
           s.input,
@@ -202,117 +220,129 @@ export function PodCard({
 }) {
   return (
     <View style={s.card}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`${pod.title} 상세 보기`}
-        onPress={onPress}
-      >
-        <Image source={{ uri: pod.image }} style={s.cardImage} />
-        <View
-          style={{
-            position: "absolute",
-            top: 14,
-            left: 14,
-            backgroundColor: "#fff",
-            borderRadius: 7,
-            paddingHorizontal: 10,
-            paddingVertical: 6,
-          }}
-        >
-          <Text style={{ fontSize: 11, color: colors.dark, fontWeight: "700" }}>
-            {status ||
-              ((pod.startDate || pod.endDate) &&
-              (pod.startDate || pod.endDate) < today()
-                ? "모집 종료"
-                : pod.members >= pod.capacity
-                  ? "모집 완료"
-                  : "모집 중")}
-          </Text>
-        </View>
-        <View style={s.cardBody}>
-          <View style={[s.row, { gap: 4, marginBottom: 7 }]}>
-            <Icon name="location-outline" size={13} color={colors.green} />
-            <Text style={{ fontSize: 12, color: colors.green }}>
-              {destinationLabel(pod)}
-            </Text>
-          </View>
-          <Text style={[s.title, { fontSize: 18, marginBottom: 9 }]}>
-            {pod.title}
-          </Text>
-          <View style={[s.row, { gap: 5 }]}>
-            <Icon name="calendar-outline" size={14} color={colors.muted} />
-            <Text style={s.muted}>{travelDateLabel(pod)}</Text>
-          </View>
-          <View style={[s.row, { gap: 6, marginTop: 12, flexWrap: "wrap" }]}>
-            <Badge>{pod.age === "제한 없음" ? "모든 연령" : pod.age}</Badge>
-            {pod.gender !== "제한 없음" && <Badge>{pod.gender}</Badge>}
-            <Badge purple={pod.investment !== "없음"}>
-              {pod.investment === "없음"
-                ? "여행만 함께"
-                : `${pod.investment} 투자 희망`}
-            </Badge>
-            {pod.verified && (
-              <Text style={{ color: colors.muted, fontSize: 11 }}>
-                ✓ 본인인증
-              </Text>
-            )}
-          </View>
-          <View
-            style={[
-              s.between,
-              {
-                borderTopWidth: 1,
-                borderTopColor: colors.line,
-                marginTop: 15,
-                paddingTop: 14,
-              },
-            ]}
-          >
-            <Text style={{ fontSize: 12, color: colors.muted }}>
-              1인 기본 경비{" "}
-              <Text
-                style={{ color: colors.text, fontSize: 18, fontWeight: "800" }}
-              >
-                {budgetLabel(pod.budget)}
-              </Text>
-            </Text>
-            <View style={[s.row, { gap: 4 }]}>
-              <Icon name="people-outline" size={15} color={colors.green} />
-              <Text
-                style={{ color: colors.green, fontWeight: "700", fontSize: 12 }}
-              >
-                {pod.members}
-                <Text style={{ color: colors.muted, fontWeight: "400" }}>
-                  /{pod.capacity}명
-                </Text>
-              </Text>
-            </View>
-          </View>
-        </View>
-      </Pressable>
-      {onSave && (
+      <View style={{ borderRadius: 20, overflow: "hidden" }}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={
-            saved ? `${pod.title} 저장 취소` : `${pod.title} 저장`
-          }
-          onPress={onSave}
-          style={{
-            position: "absolute",
-            top: 12,
-            right: 12,
-            borderRadius: 20,
-            backgroundColor: "#FFFFFFEF",
-            padding: 9,
-          }}
+          accessibilityLabel={`${pod.title} 상세 보기`}
+          onPress={onPress}
         >
-          <Icon
-            name={saved ? "bookmark" : "bookmark-outline"}
-            size={19}
-            color={saved ? colors.green : colors.dark}
-          />
+          <Image source={podImageSource(pod.image)} style={s.cardImage} />
+          <View
+            style={{
+              position: "absolute",
+              top: 14,
+              left: 14,
+              backgroundColor: "#fff",
+              borderRadius: 7,
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+            }}
+          >
+            <Text
+              style={{ fontSize: 13, color: colors.dark, fontWeight: "700" }}
+            >
+              {status ||
+                ((pod.startDate || pod.endDate) &&
+                (pod.startDate || pod.endDate) < today()
+                  ? "모집 종료"
+                  : pod.members >= pod.capacity
+                    ? "모집 완료"
+                    : "모집 중")}
+            </Text>
+          </View>
+          <View style={s.cardBody}>
+            <View style={[s.row, { gap: 4, marginBottom: 7 }]}>
+              <Icon name="location-outline" size={13} color={colors.green} />
+              <Text style={{ fontSize: 13, color: colors.green }}>
+                {destinationLabel(pod)}
+              </Text>
+            </View>
+            <Text style={[s.title, { fontSize: 19, marginBottom: 9 }]}>
+              {pod.title}
+            </Text>
+            <View style={[s.row, { gap: 5 }]}>
+              <Icon name="calendar-outline" size={14} color={colors.muted} />
+              <Text style={s.muted}>{travelDateLabel(pod)}</Text>
+            </View>
+            <View style={[s.row, { gap: 6, marginTop: 12, flexWrap: "wrap" }]}>
+              <Badge>{pod.age === "제한 없음" ? "모든 연령" : pod.age}</Badge>
+              {pod.gender !== "제한 없음" && <Badge>{pod.gender}</Badge>}
+              <Badge purple={pod.investment !== "없음"}>
+                {pod.investment === "없음"
+                  ? "여행만 함께"
+                  : `${pod.investment} 투자 희망`}
+              </Badge>
+              {pod.verified && (
+                <Text style={{ color: colors.muted, fontSize: 13 }}>
+                  ✓ 본인인증
+                </Text>
+              )}
+            </View>
+            <View
+              style={[
+                s.between,
+                {
+                  borderTopWidth: 1,
+                  borderTopColor: colors.line,
+                  marginTop: 15,
+                  paddingTop: 14,
+                },
+              ]}
+            >
+              <Text style={{ fontSize: 13, color: colors.muted }}>
+                1인 기본 경비{" "}
+                <Text
+                  style={{
+                    color: colors.text,
+                    fontSize: 18,
+                    fontWeight: "800",
+                  }}
+                >
+                  {budgetLabel(pod.budget)}
+                </Text>
+              </Text>
+              <View style={[s.row, { gap: 4 }]}>
+                <Icon name="people-outline" size={15} color={colors.green} />
+                <Text
+                  style={{
+                    color: colors.green,
+                    fontWeight: "700",
+                    fontSize: 13,
+                  }}
+                >
+                  {pod.members}
+                  <Text style={{ color: colors.muted, fontWeight: "400" }}>
+                    /{pod.capacity}명
+                  </Text>
+                </Text>
+              </View>
+            </View>
+          </View>
         </Pressable>
-      )}
+        {onSave && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={
+              saved ? `${pod.title} 저장 취소` : `${pod.title} 저장`
+            }
+            onPress={onSave}
+            style={{
+              position: "absolute",
+              top: 12,
+              right: 12,
+              borderRadius: 20,
+              backgroundColor: colors.white,
+              padding: 9,
+            }}
+          >
+            <Icon
+              name={saved ? "bookmark" : "bookmark-outline"}
+              size={19}
+              color={saved ? colors.green : colors.dark}
+            />
+          </Pressable>
+        )}
+      </View>
     </View>
   );
 }

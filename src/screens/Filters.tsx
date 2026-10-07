@@ -1,15 +1,18 @@
+import { AppText as Text } from "../components/Typography";
 import React, { useState } from "react";
-import { ScrollView, View, Text, Switch } from "react-native";
+import { ScrollView, View, Switch, Pressable } from "react-native";
 import { Button, Chips, Field, Sheet } from "../components/UI";
 import {
   Age,
   Filters as FilterType,
   Gender,
-  Investment,
   emptyFilters,
   validDate,
 } from "../domain";
-import { DateField } from "../components/DateField";
+import { DestinationSearch } from "../components/DestinationSearch";
+import { findDestination } from "../destinations";
+import { DateRangeField } from "../components/DateRangeField";
+import { InvestmentCard } from "../components/InvestmentCard";
 import { colors, styles as s } from "../theme";
 export function Filters({
   initial,
@@ -22,11 +25,17 @@ export function Filters({
 }) {
   const [f, setF] = useState(initial);
   const [error, setError] = useState("");
+  const [destinationPending, setDestinationPending] = useState(false);
+  const [destinationReset, setDestinationReset] = useState(0);
   const set = <K extends keyof FilterType>(key: K, value: FilterType[K]) => {
     setF({ ...f, [key]: value });
     setError("");
   };
   const apply = () => {
+    if (destinationPending) {
+      setError("검색 결과에서 여행 목적지를 선택하거나 검색어를 지워주세요.");
+      return;
+    }
     if (f.budget && (!/^\d+$/.test(f.budget) || Number(f.budget) <= 0)) {
       setError("최대 예산을 양의 정수로 입력해주세요.");
       return;
@@ -36,7 +45,7 @@ export function Filters({
       (f.endDate && !validDate(f.endDate)) ||
       (f.startDate && f.endDate && f.startDate > f.endDate)
     ) {
-      setError("날짜 형식과 시작·종료 순서를 확인해주세요.");
+      setError("날짜 형식과 시작 / 종료 순서를 확인해주세요.");
       return;
     }
     onApply(f);
@@ -55,6 +64,8 @@ export function Filters({
                 secondary
                 onPress={() => {
                   setF(emptyFilters);
+                  setDestinationReset((current) => current + 1);
+                  setDestinationPending(false);
                   setError("");
                 }}
               />
@@ -70,34 +81,59 @@ export function Filters({
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={[s.page, { paddingTop: 24 }]}
       >
+        <DestinationSearch
+          key={`${destinationReset}:${f.destinationId || "empty"}`}
+          value={findDestination(f.destinationId)}
+          onPendingChange={setDestinationPending}
+          onChange={(destination) =>
+            set("destinationId", destination?.id || "")
+          }
+        />
         <Field
           label="1인 최대 기본 경비 (원)"
           placeholder="예: 1000000"
-          hint="투자금·예치금 제외 · 경비 미정인 팟은 예산 필터에서 제외돼요."
           keyboardType="number-pad"
           value={f.budget}
           onChangeText={(v) => set("budget", v)}
         />
-        <DateField
-          label="떠날 수 있는 날짜부터"
-          value={f.startDate}
-          maximumDate={f.endDate || undefined}
-          onChange={(v) => set("startDate", v)}
-        />
-        <DateField
-          label="돌아와야 하는 날짜까지"
-          value={f.endDate}
-          minimumDate={f.startDate || undefined}
-          onChange={(v) => set("endDate", v)}
-          hint="입력한 기간 안에 여행이 모두 포함된 팟을 찾아요. 일정 미정인 팟은 기간 필터에서 제외돼요."
+        <DateRangeField
+          value={{ startDate: f.startDate, endDate: f.endDate }}
+          onChange={(range) => {
+            setF((current) => ({ ...current, ...range }));
+            setError("");
+          }}
         />
         <View style={s.field}>
-          <Text style={s.label}>투자 여부 · 스타일</Text>
-          <Chips<"전체" | Investment>
-            values={["전체", "없음", "안정", "균형", "공격"]}
-            selected={f.investment}
-            onChange={(v) => set("investment", v)}
-          />
+          <Text style={s.label}>투자 여부 / 스타일</Text>
+          <View style={[s.row, { gap: 6 }]}>
+            {(["전체", "안정", "균형", "공격", "없음"] as const).map(
+              (investment) => (
+                <Pressable
+                  key={investment}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: f.investment === investment }}
+                  onPress={() => set("investment", investment)}
+                  style={[
+                    s.chip,
+                    { flex: 1, paddingHorizontal: 0, alignItems: "center" },
+                    f.investment === investment && s.chipActive,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      s.chipText,
+                      f.investment === investment && s.chipTextActive,
+                    ]}
+                  >
+                    {investment}
+                  </Text>
+                </Pressable>
+              ),
+            )}
+          </View>
+          {f.investment !== "전체" && f.investment !== "없음" && (
+            <InvestmentCard investment={f.investment} />
+          )}
         </View>
         <View style={s.field}>
           <Text style={s.label}>성별 참여 조건</Text>
@@ -115,7 +151,7 @@ export function Filters({
             onChange={(v) => set("age", v)}
           />
           <Text style={[s.muted, { marginTop: 8 }]}>
-            성별·연령 제한이 없는 팟도 함께 표시해요.
+            성별 / 연령 제한이 없는 팟도 함께 표시해요.
           </Text>
         </View>
         <View style={s.between}>
@@ -124,7 +160,7 @@ export function Filters({
             accessibilityLabel="본인인증 필수 팟만"
             value={f.verifiedOnly}
             onValueChange={(v) => set("verifiedOnly", v)}
-            trackColor={{ false: "#DDE4E2", true: colors.green }}
+            trackColor={{ false: colors.line, true: colors.green }}
           />
         </View>
       </ScrollView>

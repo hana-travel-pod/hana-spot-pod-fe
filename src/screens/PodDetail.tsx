@@ -1,5 +1,6 @@
+import { AppText as Text } from "../components/Typography";
 import React, { useState } from "react";
-import { Image, ScrollView, Text, View } from "react-native";
+import { Image, ScrollView, View } from "react-native";
 import {
   Application,
   Pod,
@@ -12,6 +13,7 @@ import {
 } from "../domain";
 import { Badge, Button, DetailRow, Field, Icon, Sheet } from "../components/UI";
 import { colors, styles as s } from "../theme";
+import { podImageSource } from "../components/PodImage";
 export function PodDetail({
   pod,
   profile,
@@ -66,8 +68,8 @@ export function PodDetail({
             <Button
               title={
                 application.status === "approved"
-                  ? "가입 완료 · 내 팟에서 확인"
-                  : "이전 신청 · 참가 조건 확인"
+                  ? "가입 완료 / 내 팟에서 확인"
+                  : "이전 신청 / 참가 조건 확인"
               }
               secondary
               onPress={onViewMine}
@@ -101,8 +103,12 @@ export function PodDetail({
       >
         {!applying && (
           <Image
-            source={{ uri: pod.image }}
-            style={{ width: "100%", height: 245, backgroundColor: "#C9E3D9" }}
+            source={podImageSource(pod.image)}
+            style={{
+              width: "100%",
+              height: 245,
+              backgroundColor: colors.iconBg,
+            }}
           />
         )}
         <View style={[s.page, { paddingTop: 24 }]}>
@@ -115,7 +121,7 @@ export function PodDetail({
                   ? "모집 완료"
                   : "모집 중"}
             </Badge>
-            <Text style={{ fontSize: 12, color: colors.green }}>
+            <Text style={{ fontSize: 13, color: colors.green }}>
               {destinationLabel(pod)}
             </Text>
           </View>
@@ -134,10 +140,10 @@ export function PodDetail({
                 <Icon name="person" size={18} color={colors.green} />
               </View>
               <Text style={s.muted}>
-                팟장{" "}
                 <Text style={{ color: colors.text, fontWeight: "600" }}>
                   {pod.host}
-                </Text>
+                </Text>{" "}
+                팟장
               </Text>
             </View>
           )}
@@ -154,17 +160,15 @@ export function PodDetail({
               marginVertical: 14,
             }}
           >
-            <View style={s.between}>
+            <View style={{ gap: 8 }}>
               <Text style={s.muted}>1인 예상 기본 경비</Text>
-              <Text
-                style={{ color: colors.text, fontSize: 23, fontWeight: "800" }}
-              >
+              <Text style={s.amount}>
                 {pod.budget > 0 ? money(pod.budget) : "미정"}
-                {pod.budget > 0 && <Text style={{ fontSize: 14 }}> 원</Text>}
+                {pod.budget > 0 && <Text style={{ fontSize: 16 }}> 원</Text>}
               </Text>
             </View>
             <Text style={[s.muted, { marginTop: 8 }]}>
-              항공·숙박·기본 식비 포함 · 투자금과 예치금 제외
+              항공 / 숙박 / 기본 식비 포함 / 투자금과 예치금 제외
             </Text>
           </View>
           <Text style={[s.title, s.section]}>함께할 조건</Text>
@@ -190,7 +194,7 @@ export function PodDetail({
                 투자 방향만 미리 맞춰요
               </Text>
               <Text style={[s.muted, { marginTop: 5 }]}>
-                희망 투자 스타일이며 실제 상품·금액은 모임 구성 후 별도로
+                희망 투자 스타일이며 실제 상품 / 금액은 모임 구성 후 별도로
                 합의해요. 기본 경비에 투자금은 포함되지 않아요.
               </Text>
             </View>
@@ -205,7 +209,7 @@ export function PodDetail({
             value={`${money(pod.deposit)}원`}
           />
           <Text style={s.muted}>
-            승인 기준은 모집 완료 후 투표에 적용해요. 예치금 납부·반환·취소
+            승인 기준은 모집 완료 후 투표에 적용해요. 예치금 납부 / 반환 / 취소
             기준은 모임 구성 후 합의하며, 이 프로토타입에서는 결제하지 않아요.
           </Text>
           {applying ? (

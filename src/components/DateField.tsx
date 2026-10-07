@@ -1,5 +1,6 @@
+import { AppText as Text } from "./Typography";
 import React, { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, View } from "react-native";
 import { calendarDays, shiftMonth, today } from "../domain";
 import { Icon, IconButton } from "./UI";
 import { colors, styles as s } from "../theme";
@@ -39,7 +40,7 @@ export function DateField({
         style={[s.input, s.between]}
       >
         <Text
-          style={{ color: value ? colors.text : colors.muted, fontSize: 15 }}
+          style={{ color: value ? colors.text : colors.muted, fontSize: 16 }}
         >
           {value ? value.replaceAll("-", ".") : "날짜 선택 (선택 사항)"}
         </Text>
@@ -53,7 +54,7 @@ export function DateField({
             borderRadius: 16,
             marginTop: 8,
             padding: 10,
-            backgroundColor: colors.bg,
+            backgroundColor: colors.white,
           }}
         >
           <View style={[s.between, { marginBottom: 10 }]}>
@@ -78,7 +79,7 @@ export function DateField({
                 style={{
                   width: "14.2857%",
                   textAlign: "center",
-                  fontSize: 12,
+                  fontSize: 13,
                   color: colors.muted,
                   marginBottom: 6,
                 }}
@@ -118,7 +119,7 @@ export function DateField({
                         justifyContent: "center",
                         backgroundColor:
                           value === date ? colors.green : "transparent",
-                        opacity: disabled ? 0.25 : 1,
+                        opacity: disabled ? 0.4 : 1,
                       }}
                     >
                       <Text
