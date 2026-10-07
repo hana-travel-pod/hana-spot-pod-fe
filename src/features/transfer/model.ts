@@ -10,7 +10,7 @@ export type Approval = 'waiting' | 'approved' | 'rejected';
 export interface Draft { purpose: string; recipient: string; amount: string }
 export const INITIAL_BALANCE = 3_200_000;
 export const DEMO_ACCOUNT = 'DEMO-****-**** (시연용)';
-export const DEMO_DRAFT: Draft = { purpose: '오사카 숙소 예약금', recipient: '오사카 숙소 예약 계좌', amount: '800000' };
+export const DEMO_DRAFT: Draft = { purpose: '파리 숙소 예약금', recipient: '파리 숙소 예약 계좌', amount: '800000' };
 export interface TransferRequest {
   id: number; purpose: string; recipient: string; amount: number; status: RequestStatus;
   approvals: Record<MemberId, Approval>; processedAt: string | null;
