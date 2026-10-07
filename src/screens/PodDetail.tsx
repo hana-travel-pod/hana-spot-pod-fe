@@ -98,12 +98,16 @@ export function PodDetail({
       }
     >
       <ScrollView
+        style={s.scroll}
+        contentInsetAdjustmentBehavior="never"
+        keyboardDismissMode="on-drag"
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingBottom: 28 }}
       >
         {!applying && (
           <Image
             source={podImageSource(pod.image)}
+            fadeDuration={0}
             style={{
               width: "100%",
               height: 245,

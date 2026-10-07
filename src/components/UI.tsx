@@ -9,8 +9,9 @@ import {
   Modal,
   KeyboardAvoidingView,
   Platform,
+  useWindowDimensions,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { colors, styles as s } from "../theme";
 import { podImageSource } from "./PodImage";
@@ -48,7 +49,7 @@ export function IconButton({
       accessibilityLabel={label}
       onPress={onPress}
       hitSlop={10}
-      style={{ padding: 5 }}
+      style={s.iconButton}
     >
       <Icon name={name} size={24} />
     </Pressable>
@@ -186,22 +187,48 @@ export function Sheet({
   children: React.ReactNode;
   footer?: React.ReactNode;
 }) {
+  const { width, height } = useWindowDimensions();
+  const compact = width < 360 || height < 700;
   return (
-    <Modal visible animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView style={s.modalRoot}>
-        <KeyboardAvoidingView
-          style={s.modalShell}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+    <Modal
+      visible
+      animationType="slide"
+      presentationStyle="fullScreen"
+      onRequestClose={onClose}
+    >
+      {/* iOS modals have their own native view tree and need their own provider. */}
+      <SafeAreaProvider style={s.modalRoot}>
+        <SafeAreaView
+          style={s.modalSafe}
+          edges={["top", "bottom", "left", "right"]}
         >
-          <View style={s.header}>
-            <IconButton name="arrow-back" onPress={onClose} label="뒤로 가기" />
-            <Text style={[s.title, { fontSize: 17 }]}>{title}</Text>
-            <View style={{ width: 34 }} />
-          </View>
-          {children}
-          {footer && <View style={s.footer}>{footer}</View>}
-        </KeyboardAvoidingView>
-      </SafeAreaView>
+          <KeyboardAvoidingView
+            style={s.modalShell}
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+          >
+            <View style={[s.header, compact && { paddingHorizontal: 12 }]}>
+              <IconButton
+                name="arrow-back"
+                onPress={onClose}
+                label="뒤로 가기"
+              />
+              <Text style={s.sheetTitle}>{title}</Text>
+              <View style={s.headerSpacer} />
+            </View>
+            <View style={s.sheetBody}>{children}</View>
+            {footer && (
+              <View
+                style={[
+                  s.footer,
+                  compact && { paddingHorizontal: 16, paddingVertical: 12 },
+                ]}
+              >
+                {footer}
+              </View>
+            )}
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+      </SafeAreaProvider>
     </Modal>
   );
 }
@@ -226,7 +253,11 @@ export function PodCard({
           accessibilityLabel={`${pod.title} 상세 보기`}
           onPress={onPress}
         >
-          <Image source={podImageSource(pod.image)} style={s.cardImage} />
+          <Image
+            source={podImageSource(pod.image)}
+            style={s.cardImage}
+            fadeDuration={0}
+          />
           <View
             style={{
               position: "absolute",
@@ -286,6 +317,8 @@ export function PodCard({
                   borderTopColor: colors.line,
                   marginTop: 15,
                   paddingTop: 14,
+                  flexWrap: "wrap",
+                  gap: 10,
                 },
               ]}
             >

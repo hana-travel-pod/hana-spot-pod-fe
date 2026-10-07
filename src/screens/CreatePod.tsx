@@ -128,6 +128,9 @@ export function CreatePod({
       }
     >
       <ScrollView
+        style={s.scroll}
+        contentInsetAdjustmentBehavior="never"
+        keyboardDismissMode="on-drag"
         key={step}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={s.page}

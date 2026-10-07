@@ -78,6 +78,9 @@ export function Filters({
       }
     >
       <ScrollView
+        style={s.scroll}
+        contentInsetAdjustmentBehavior="never"
+        keyboardDismissMode="on-drag"
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={[s.page, { paddingTop: 24 }]}
       >

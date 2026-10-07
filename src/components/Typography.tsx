@@ -11,7 +11,13 @@ export function AppText({ style, ...props }: TextProps) {
     <Text
       {...props}
       style={[
-        { fontSize: 16, color: colors.text },
+        {
+          fontSize: 16,
+          color: colors.text,
+          flexShrink: 1,
+          // Leave room for Hana font ascenders/descenders on native iOS too.
+          lineHeight: Math.ceil((resolved?.fontSize ?? 16) * 1.45),
+        },
         style,
         { fontFamily, fontWeight: "normal" },
       ]}

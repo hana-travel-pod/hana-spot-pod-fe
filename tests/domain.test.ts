@@ -27,7 +27,12 @@ import {
   normalizePodDestination,
   searchDestinations,
 } from "../src/destinations.ts";
-import { makeSeeds, refreshDemoData, DEMO_REVISION } from "../src/data.ts";
+import {
+  makeSeeds,
+  refreshDemoData,
+  DEMO_REVISION,
+  destinationImages,
+} from "../src/data.ts";
 
 const pod: Pod = {
   id: "test",
@@ -579,4 +584,43 @@ test("저장된 미국 팟의 사진만 교체하고 가입 및 저장 상태를
   assert.deepEqual(restored.applications, previous.applications);
   assert.deepEqual(restored.saved, previous.saved);
   assert.deepEqual(refreshDemoData(restored), restored);
+});
+
+test("저장된 외부 여행지 사진은 로컬 사진으로 바꾸고 사용자 데이터를 보존한다", () => {
+  const previous = {
+    demoRevision: DEMO_REVISION,
+    pods: [
+      {
+        ...pod,
+        id: "legacy",
+        image:
+          "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=1000&auto=format&q=85",
+      },
+      { ...pod, id: "custom", image: "https://my-photo.example/custom.jpg" },
+      {
+        ...pod,
+        id: "unknown",
+        image: "https://images.unsplash.com/photo-other?w=1000",
+      },
+    ],
+    applications: [
+      {
+        podId: "legacy",
+        message: "함께해요",
+        createdAt: "2026-10-07",
+        status: "approved" as const,
+      },
+    ],
+    saved: ["legacy", "custom"],
+  };
+  const restored = refreshDemoData(previous);
+  assert.deepEqual(restored.pods[0], {
+    ...previous.pods[0],
+    image: destinationImages.japan,
+  });
+  assert.deepEqual(restored.pods.slice(1), previous.pods.slice(1));
+  assert.deepEqual(restored.applications, previous.applications);
+  assert.deepEqual(restored.saved, previous.saved);
+  assert.deepEqual(refreshDemoData(restored), restored);
+  assert.ok(makeSeeds().every((p) => p.image.startsWith("asset:")));
 });

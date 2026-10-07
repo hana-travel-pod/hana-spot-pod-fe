@@ -8,8 +8,13 @@ import {
   TextInput,
   View,
   Platform,
+  useWindowDimensions,
 } from "react-native";
-import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaProvider,
+  SafeAreaView,
+  initialWindowMetrics,
+} from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useFonts } from "expo-font";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -36,6 +41,7 @@ import {
 import { normalizePodDestination } from "./src/destinations";
 import { makeSeeds, DEMO_REVISION, refreshDemoData } from "./src/data";
 import { colors, styles as s } from "./src/theme";
+import { imageAssets, prefetchAppImages } from "./src/components/PodImage";
 import { CreatePod } from "./src/screens/CreatePod";
 import { Filters } from "./src/screens/Filters";
 import { PodDetail } from "./src/screens/PodDetail";
@@ -109,6 +115,8 @@ function isStore(value: unknown): value is Store {
 }
 
 export default function App() {
+  const { width, fontScale } = useWindowDimensions();
+  const compact = width < 400 || fontScale > 1.15;
   const [fontsLoaded, fontError] = useFonts({
     "Hana2-Regular": require("./assets/fonts/Hana2-Regular.otf"),
     "Hana2-Medium": require("./assets/fonts/Hana2-Medium.otf"),
@@ -128,6 +136,7 @@ export default function App() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const [toast, setToast] = useState("");
   useEffect(() => {
+    void prefetchAppImages();
     let active = true;
     AsyncStorage.getItem(STORAGE_KEY)
       .then(async (raw) => {
@@ -136,16 +145,22 @@ export default function App() {
         if (!isStore(parsed)) throw new Error("Invalid data");
         const refreshed = refreshDemoData(parsed);
         const restoredPods = refreshed.pods.map(normalizePodDestination);
+        const profile =
+          refreshed.profile.name === "여행자"
+            ? { ...refreshed.profile, name: defaultProfile.name }
+            : refreshed.profile;
         const normalized = {
           ...refreshed,
+          profile,
           ...approvePendingApplications(
             restoredPods,
             refreshed.applications,
-            refreshed.profile,
+            profile,
           ),
         };
         if (
           parsed.demoRevision !== DEMO_REVISION ||
+          profile.name !== parsed.profile.name ||
           restoredPods.some(
             (p, i) =>
               p.image !== parsed.pods[i].image ||
@@ -303,53 +318,41 @@ export default function App() {
   );
 
   return (
-    <SafeAreaProvider>
+    <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       <SafeAreaView style={s.root}>
         <StatusBar style="dark" />
         <View style={s.shell}>
-          <View
-            style={{
-              paddingHorizontal: 22,
-              paddingTop: 18,
-              paddingBottom: 16,
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
+          <View style={s.appHeader}>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="팟 탐색 홈"
               onPress={() => setTab("explore")}
-              style={[s.row, { gap: 8 }]}
+              style={s.brand}
             >
               <Image
-                source={require("./assets/images/logo.png")}
+                source={imageAssets.logo}
+                fadeDuration={0}
                 accessibilityLabel="하나 트래블 팟 로고"
-                style={{ width: 42, height: 42, borderRadius: 12 }}
+                style={s.brandLogo}
               />
-              <Text
-                style={{
-                  color: colors.dark,
-                  fontSize: 21,
-                  letterSpacing: -0.8,
-                  fontWeight: "800",
-                }}
-              >
+              <Text style={[s.brandTitle, compact && { fontSize: 17 }]}>
                 하나 트래블 팟
               </Text>
             </Pressable>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="내 프로필 설정"
+              accessibilityLabel={`${data.profile.name} 여행자님, 내 프로필 설정`}
               onPress={() => setModal("profile")}
-              style={{
-                padding: 9,
-                borderRadius: 20,
-                backgroundColor: colors.bg,
-              }}
+              style={s.traveler}
             >
-              <Icon name="person-outline" size={19} />
+              <Text
+                numberOfLines={1}
+                ellipsizeMode="tail"
+                style={s.travelerName}
+              >
+                {data.profile.name}
+              </Text>
+              <Text style={s.travelerSuffix}>여행자님</Text>
             </Pressable>
           </View>
           {!ready || (!fontsLoaded && !fontError) ? (
@@ -372,6 +375,7 @@ export default function App() {
           ) : (
             <ScrollView
               keyboardShouldPersistTaps="handled"
+              style={s.scroll}
               contentContainerStyle={s.page}
               stickyHeaderIndices={tab === "explore" ? [1] : undefined}
             >
@@ -385,10 +389,10 @@ export default function App() {
                   <Text
                     style={{
                       color: colors.dark,
-                      fontSize: 28,
+                      fontSize: compact ? 26 : 28,
                       fontWeight: "800",
                       letterSpacing: -1.3,
-                      lineHeight: 38,
+                      lineHeight: compact ? 37 : 40,
                     }}
                   >
                     좋은 여행은,{"\n"}하나 트래블 팟에서.
@@ -459,12 +463,18 @@ export default function App() {
                       { minHeight: 180, overflow: "hidden" },
                     ]}
                   >
-                    <View style={{ zIndex: 2, width: "72%" }}>
+                    <View
+                      style={{
+                        zIndex: 2,
+                        width: compact ? "68%" : "72%",
+                        minWidth: 0,
+                      }}
+                    >
                       <Text
                         style={{
                           fontSize: 13,
                           fontWeight: "700",
-                          letterSpacing: 1.7,
+                          letterSpacing: compact ? 0.4 : 1.7,
                           color: colors.green,
                         }}
                       >
@@ -526,13 +536,14 @@ export default function App() {
                       }}
                     />
                     <Image
-                      source={require("./assets/images/travel-airplane.png")}
+                      source={imageAssets.airplane}
+                      fadeDuration={0}
                       style={{
                         position: "absolute",
                         right: -3,
                         bottom: 2,
-                        width: 140,
-                        height: 140,
+                        width: compact ? 112 : 140,
+                        height: compact ? 112 : 140,
                       }}
                       resizeMode="contain"
                     />

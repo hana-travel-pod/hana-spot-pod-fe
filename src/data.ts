@@ -2,17 +2,26 @@ import { normalizePodDestination } from "./destinations.ts";
 import type { Pod, Application } from "./domain.ts";
 export const DEMO_REVISION = 2;
 export const destinationImages = {
-  japan:
-    "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=1000&auto=format&fit=crop&q=85",
-  bali: "https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=1000&auto=format&fit=crop&q=85",
-  europe:
-    "https://images.unsplash.com/photo-1499856871958-5b9627545d1a?w=1000&auto=format&fit=crop&q=85",
-  korea:
-    "https://images.unsplash.com/photo-1534274867514-d5b47ef89ed7?w=1000&auto=format&fit=crop&q=85",
-  china:
-    "https://images.unsplash.com/photo-1508804185872-d7badad00f7d?w=1000&auto=format&fit=crop&q=85",
+  japan: "asset:japan",
+  bali: "asset:bali",
+  europe: "asset:europe",
+  korea: "asset:korea",
+  china: "asset:china",
   america: "asset:los-angeles",
 };
+// Resolve saved demo photos without resetting joins, saved pods or custom images.
+const legacyPhotoIds: Record<string, string> = {
+  "photo-1493976040374-85c8e12f0c0e": destinationImages.japan,
+  "photo-1537996194471-e657df975ab4": destinationImages.bali,
+  "photo-1499856871958-5b9627545d1a": destinationImages.europe,
+  "photo-1534274867514-d5b47ef89ed7": destinationImages.korea,
+  "photo-1508804185872-d7badad00f7d": destinationImages.china,
+};
+export function normalizeDestinationImage(image: string): string {
+  const photoId =
+    /^https:\/\/images\.unsplash\.com\/(photo-[\w-]+)(?:\?|$)/.exec(image)?.[1];
+  return photoId ? (legacyPhotoIds[photoId] ?? image) : image;
+}
 export const categories = [
   "전체",
   "일본",
@@ -119,7 +128,7 @@ export function refreshDemoData<
       pods: store.pods.map((pod) =>
         pod.country === "미국"
           ? { ...pod, image: destinationImages.america }
-          : pod,
+          : { ...pod, image: normalizeDestinationImage(pod.image) },
       ),
     };
   return {

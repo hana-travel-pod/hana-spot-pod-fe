@@ -73,7 +73,11 @@ export function DateRangeField({
             />
           }
         >
-          <ScrollView contentContainerStyle={[s.page, { paddingTop: 24 }]}>
+          <ScrollView
+            style={s.scroll}
+            contentInsetAdjustmentBehavior="never"
+            contentContainerStyle={[s.page, { paddingTop: 24 }]}
+          >
             <View style={[s.row, { gap: 10 }]}>
               {(
                 [

@@ -64,7 +64,7 @@ export const emptyFilters: Filters = {
   endDate: "",
 };
 export const defaultProfile: Profile = {
-  name: "여행자",
+  name: "김하나",
   gender: "여성",
   age: "20대",
   verified: true,
