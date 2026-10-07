@@ -35,6 +35,17 @@ test("three AI ETFs and four member stocks have valid proposers", () => {
     assert.notEqual(proposerName(p), "모임원");
   }
 });
+test("the travel pod has four members, aggressive style and a three-person approval threshold", () => {
+  assert.equal(DEMO_CONFIG.pod.name, "우리의 프랑스 4박 5일");
+  assert.equal(DEMO_CONFIG.pod.members.length, 4);
+  assert.equal(DEMO_CONFIG.pod.investmentStyle, "공격");
+  assert.equal(DEMO_CONFIG.pod.threshold, 3);
+  for (const vote of LIVE_VOTE_EVENTS) {
+    assert.ok(DEMO_CONFIG.pod.members.some((member) => member.id === vote.memberId));
+    assert.notEqual(vote.memberId, DEMO_CONFIG.currentMemberId);
+    assert.ok(DEMO_CONFIG.plans.some((plan) => plan.id === vote.planId));
+  }
+});
 test("initial member votes are valid and distinct; all counts fit the pod", () => {
   assert.equal(
     new Set(INITIAL_VOTES.map((v) => `${v.memberId}:${v.planId}`)).size,
@@ -47,7 +58,7 @@ test("initial member votes are valid and distinct; all counts fit the pod", () =
   }
   assert.deepEqual(
     DEMO_CONFIG.plans.map((p) => voteCount(createInitialState(), p.id)),
-    [4, 2, 1, 4, 2, 2, 0],
+    [3, 2, 1, 3, 2, 2, 0],
   );
 });
 test("one selection is required; ETF and stock selection can be changed before submission", () => {
@@ -61,17 +72,20 @@ test("one selection is required; ETF and stock selection can be changed before s
   assert.deepEqual(state.selectedPlanIds, ["samsung"]);
   assert.equal(toggle(state, "invalid"), state);
 });
-test("threshold comparison is strict and applies identically to ETF and stock", () => {
+test("three approvals qualify both ETF and stock; two approvals remain ineligible", () => {
   let state = receive(
-    receive(createInitialState(), LIVE_VOTE_EVENTS[0]),
+    receive(createInitialState([
+      { memberId: "m2", planId: "bond" },
+      { memberId: "m2", planId: "skhynix" },
+    ]), LIVE_VOTE_EVENTS[0]),
     LIVE_VOTE_EVENTS[1],
   );
   state = toggle(toggle(state, "bond"), "skhynix");
   assert.equal(isCandidate(state, "bond"), false);
   assert.equal(isCandidate(state, "skhynix"), false);
   state = submit(state);
-  assert.equal(voteCount(state, "bond"), 4);
-  assert.equal(voteCount(state, "skhynix"), 4);
+  assert.equal(voteCount(state, "bond"), 3);
+  assert.equal(voteCount(state, "skhynix"), 3);
   assert.equal(isCandidate(state, "bond"), true);
   assert.equal(isCandidate(state, "skhynix"), true);
 });
@@ -97,15 +111,14 @@ test("repeated submission is idempotent and revised votes replace only the curre
   assert.equal(hasVoteChanges(revised), false);
   assert.equal(submit(revised), revised);
 });
-test("revision removes a candidate that falls below the strict threshold from confirmation targets", () => {
-  let state = receive(createInitialState(), LIVE_VOTE_EVENTS[0]);
-  state = submit(toggle(state, "bond"));
+test("revision removes a candidate that falls below three approvals from confirmation targets", () => {
+  let state = submit(toggle(createInitialState(), "bond"));
   state = reduceDemo(state, { type: "toggleConfirmation", planId: "bond" });
   assert.equal(canConfirm(state), true);
   state = toggle(toggle(state, "bond"), "samsung");
   assert.equal(canConfirm(state), false);
   state = submit(state);
-  assert.equal(voteCount(state, "bond"), 3);
+  assert.equal(voteCount(state, "bond"), 2);
   assert.equal(isCandidate(state, "bond"), false);
   assert.deepEqual(state.confirmationPlanIds, []);
   assert.equal(canConfirm(state), false);
@@ -119,10 +132,10 @@ test("existing member vote cannot be duplicated", () => {
   assert.equal(voteCount(state, "bond"), 3);
   assert.equal(state.votes.length, initial.votes.length);
 });
-test("no candidate configuration and exact threshold remain ineligible", () => {
-  const votes = ["m2", "m3"].map((memberId) => ({ memberId, planId: "bond" }));
+test("no candidate configuration below the threshold remains ineligible", () => {
+  const votes = ["m2"].map((memberId) => ({ memberId, planId: "bond" }));
   const state = submit(toggle(createInitialState(votes), "bond"));
-  assert.equal(voteCount(state, "bond"), 3);
+  assert.equal(voteCount(state, "bond"), 2);
   assert.ok(DEMO_CONFIG.plans.every((p) => !isCandidate(state, p.id)));
   assert.equal(canConfirm(state), false);
   assert.equal(
@@ -141,14 +154,14 @@ test("representative can confirm mixed asset candidates and change selection", (
   assert.deepEqual(state.confirmationPlanIds, ["samsung"]);
 });
 test("ordinary member can vote but cannot confirm", () => {
-  const config = { ...DEMO_CONFIG, currentMemberId: "m6" };
+  const config = { ...DEMO_CONFIG, currentMemberId: "m4" };
   let state = reduceDemo(
     createInitialState(),
     { type: "toggleSelection", planId: "sp500" },
     config,
   );
   state = reduceDemo(state, { type: "submit" }, config);
-  assert.equal(voteCount(state, "sp500", config), 5);
+  assert.equal(voteCount(state, "sp500", config), 3);
   assert.equal(
     reduceDemo(state, { type: "toggleConfirmation", planId: "sp500" }, config),
     state,
@@ -158,11 +171,11 @@ test("ordinary member can vote but cannot confirm", () => {
     false,
   );
 });
-test("live vote updates discussion without prematurely confirming a candidate", () => {
+test("live third approval confirms a candidate without submitting the current member selection", () => {
   const state = toggle(createInitialState(), "samsung");
   const next = receive(state, LIVE_VOTE_EVENTS[0]);
   assert.equal(voteCount(next, "bond"), 3);
-  assert.equal(discussionStatus(next, "bond"), "discussing");
+  assert.equal(discussionStatus(next, "bond"), "confirmed");
   assert.deepEqual(next.selectedPlanIds, ["samsung"]);
   assert.equal(next.submitted, false);
   assert.deepEqual(next.latestVote, LIVE_VOTE_EVENTS[0]);
@@ -194,22 +207,22 @@ test("counts ignore duplicate and unknown member votes", () => {
   assert.equal(voteCount(state, "bond"), 2);
 });
 
-test("live demo keeps one AI and one member candidate, three discussing and two low", () => {
+test("live demo has two AI and two member candidates, two discussing and one low", () => {
   let state = createInitialState();
   for (const vote of LIVE_VOTE_EVENTS) state = receive(state, vote);
   const candidates = DEMO_CONFIG.plans.filter((p) => isCandidate(state, p.id));
-  assert.equal(candidates.filter((p) => p.source === "ai").length, 1);
-  assert.equal(candidates.filter((p) => p.source === "member").length, 1);
+  assert.equal(candidates.filter((p) => p.source === "ai").length, 2);
+  assert.equal(candidates.filter((p) => p.source === "member").length, 2);
   assert.equal(
     DEMO_CONFIG.plans.filter(
       (p) => discussionStatus(state, p.id) === "discussing",
     ).length,
-    3,
+    2,
   );
   assert.equal(
     DEMO_CONFIG.plans.filter((p) => discussionStatus(state, p.id) === "low")
       .length,
-    2,
+    1,
   );
 });
 
@@ -248,7 +261,7 @@ test("amount entry rejects negative, decimal, nonfinite, unknown and unselected 
 });
 test("ordinary members cannot set an investment amount or request investment", () => {
   const state = confirmedPair();
-  const config = { ...DEMO_CONFIG, currentMemberId: "m6" };
+  const config = { ...DEMO_CONFIG, currentMemberId: "m4" };
   assert.equal(reduceDemo(state, { type: "setInvestmentAmount", planId: "sp500", amount: 10000 }, config), state);
   assert.equal(canRequestInvestment(state, config), false);
 });

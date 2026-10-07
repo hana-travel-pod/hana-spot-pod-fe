@@ -364,7 +364,16 @@ function Card({
     </View>
   );
 }
-function Facts({ rows, emphasizeValues = false }: { rows: [string, string][]; emphasizeValues?: boolean }) {
+function InvestmentStyleLabel() {
+  return (
+    <Copy kind="label" style={{ color: C.ink, fontSize: 17 }}>
+      <Copy kind="label" style={{ color: C.green, fontSize: 17 }}>
+        {DEMO_CONFIG.pod.investmentStyle}
+      </Copy>형 성향
+    </Copy>
+  );
+}
+function Facts({ rows, emphasizeValues = false }: { rows: [string, React.ReactNode][]; emphasizeValues?: boolean }) {
   return (
     <View style={s.facts}>
       {rows.map(([label, value]) => (
@@ -520,12 +529,6 @@ export function InvestmentApp() {
               {title}
             </Copy>
           </View>
-          <Image
-            source={require("../reference/logo.png")}
-            style={s.logo}
-            resizeMode="contain"
-            accessibilityLabel="하나은행 로고"
-          />
         </View>
         <View
           style={s.progress}
@@ -577,12 +580,7 @@ export function InvestmentApp() {
                         투자안을 함께{"\n"}조율하고 있어요
                       </Copy>
                       <View style={s.styleBadge}>
-                        <Copy
-                          kind="label"
-                          style={{ color: C.green, fontSize: 17 }}
-                        >
-                          {pod.investmentStyle}형 투자
-                        </Copy>
+                        <InvestmentStyleLabel />
                       </View>
                       <Copy
                         kind="small"
@@ -609,7 +607,7 @@ export function InvestmentApp() {
                       <Copy kind="label">투표 현황</Copy>
                     </View>
                     <Copy kind="small" style={{ color: C.muted }}>
-                      {pod.threshold + 1}명 이상 / 완료
+                      {pod.threshold}명 이상 / 완료
                     </Copy>
                   </View>
                   <View style={s.summaryRow}>
@@ -782,7 +780,7 @@ export function InvestmentApp() {
                     </Copy>
                   </View>
                   <Copy kind="small" style={{ color: C.muted, marginTop: 5 }}>
-                    <Copy style={s.dynamicValue}>{pod.threshold + 1}명</Copy> 이상 찬성 시 완료
+                    <Copy style={s.dynamicValue}>{pod.threshold}명</Copy> 이상 찬성 시 완료
                   </Copy>
                   {member?.isRepresentative && (
                     <Copy kind="small" style={{ color: C.muted, marginTop: 5 }}>
@@ -870,7 +868,7 @@ export function InvestmentApp() {
                             <View
                               testID={`threshold-range-${plan.id}`}
                               pointerEvents="none"
-                              style={[s.thresholdRange, { width: `${Math.min(1, (pod.threshold + 1) / pod.members.length) * 100}%` }]}
+                              style={[s.thresholdRange, { width: `${Math.min(1, pod.threshold / pod.members.length) * 100}%` }]}
                             />
                           </View>
                         </Pressable>
@@ -897,7 +895,7 @@ export function InvestmentApp() {
                         kind="small"
                         style={{ color: C.muted, marginTop: 10 }}
                       >
-                        {pod.threshold + 1}명 이상 찬성한 종목이 아직 없어요
+                        {pod.threshold}명 이상 찬성한 종목이 아직 없어요
                       </Copy>
                     </View>
                   )}
@@ -916,7 +914,7 @@ export function InvestmentApp() {
                     rows={[
                       ["모임명", pod.name],
                       ["대표자", representative?.name ?? "미지정"],
-                      ["투자 성향", pod.investmentStyle],
+                      ["투자 성향", <InvestmentStyleLabel key="investment-style" />],
                       ["참여 회원", `${pod.members.length}명`],
                     ]}
                   />
@@ -1209,7 +1207,6 @@ const s = StyleSheet.create({
     transform: [{ rotate: "45deg" }],
     marginLeft: 6,
   },
-  logo: { width: 36, height: 40, marginLeft: "auto", flexShrink: 0 },
   addButton: {
     minHeight: 56,
     flexShrink: 0,

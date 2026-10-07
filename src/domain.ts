@@ -65,8 +65,8 @@ export const DEMO_RULES = {
 };
 export const POD: Pod = {
   id: "weekend-pod",
-  name: "차곡차곡 투자 모임",
-  investmentStyle: "균형",
+  name: "우리의 프랑스 4박 5일",
+  investmentStyle: "공격",
   availableAmount: 3000000,
   threshold: 3,
   members: [
@@ -74,8 +74,6 @@ export const POD: Pod = {
     { id: "m2", name: "이준", isRepresentative: false },
     { id: "m3", name: "박서연", isRepresentative: false },
     { id: "m4", name: "최민수", isRepresentative: false },
-    { id: "m5", name: "정유진", isRepresentative: false },
-    { id: "m6", name: "오지호", isRepresentative: false },
   ],
 };
 export const STYLE_DESCRIPTIONS: Record<InvestmentStyle, string> = {
@@ -137,7 +135,7 @@ export const AI_PLANS: InvestmentPlan[] = [
     description: "글로벌 배당 우량 기업에 분산 투자",
     risk: "다소 높은 위험",
     riskLevel: 3,
-    reason: "배당과 성장을 함께 살피는 균형 성향의 모임에 어울려요.",
+    reason: "성장을 추구하는 모임에서 배당 우량주도 함께 비교해볼 수 있어요.",
     features: [
       "여러 국가의 배당 기업에 분산 투자",
       "분배금 규모와 지급은 보장되지 않아요",
@@ -219,7 +217,7 @@ export const STOCK_PLANS: InvestmentPlan[] = [
     id: "hyundai",
     assetType: "stock",
     source: "member",
-    proposedBy: "m5",
+    proposedBy: "m1",
     name: "현대자동차",
     code: "005380",
     category: "국내 주식 / 자동차",
@@ -242,10 +240,10 @@ export const PLANS: InvestmentPlan[] = [
   ...STOCK_PLANS,
 ];
 export const LIVE_VOTE_EVENTS: Vote[] = [
-  { memberId: "m6", planId: "bond" },
+  { memberId: "m3", planId: "bond" },
   { memberId: "m4", planId: "skhynix" },
-  { memberId: "m6", planId: "sp500" },
-  { memberId: "m6", planId: "samsung" },
+  { memberId: "m2", planId: "dividend" },
+  { memberId: "m2", planId: "hyundai" },
 ];
 export const DEMO_CONFIG: DemoConfig = {
   pod: POD,
@@ -253,13 +251,13 @@ export const DEMO_CONFIG: DemoConfig = {
   currentMemberId: "m1",
 };
 export const INITIAL_VOTES: Vote[] = [
-  ...["m2", "m3", "m4", "m5"].map((memberId) => ({
+  ...["m2", "m3", "m4"].map((memberId) => ({
     memberId,
     planId: "sp500",
   })),
   ...["m2", "m4"].map((memberId) => ({ memberId, planId: "bond" })),
   { memberId: "m3", planId: "dividend" },
-  ...["m2", "m3", "m4", "m5"].map((memberId) => ({
+  ...["m2", "m3", "m4"].map((memberId) => ({
     memberId,
     planId: "samsung",
   })),
@@ -298,7 +296,7 @@ export function isCandidate(
 ) {
   return (
     config.plans.some((e) => e.id === planId) &&
-    voteCount(state, planId, config) > config.pod.threshold
+    voteCount(state, planId, config) >= config.pod.threshold
   );
 }
 export type DiscussionStatus = "confirmed" | "discussing" | "low";
@@ -309,7 +307,7 @@ export function discussionStatus(
 ): DiscussionStatus {
   if (isCandidate(state, planId, config)) return "confirmed";
   return voteCount(state, planId, config) >=
-    Math.ceil((config.pod.threshold + 1) / 2)
+    Math.ceil(config.pod.threshold / 2)
     ? "discussing"
     : "low";
 }
