@@ -4,9 +4,9 @@ const confirmedProfit = 80_000;
 const investmentPrincipal = 400_000;
 
 export const MEETING = {
-  name: '우리의 오사카 4박 5일',
+  name: '우리의 프랑스 4박 5일',
   memberCount: 4,
-  destination: '일본 오사카',
+  destination: '프랑스 파리',
   basicTravelCost: 3_200_000,
   investmentPrincipal,
   realizedAmount,

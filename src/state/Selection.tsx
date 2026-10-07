@@ -5,7 +5,7 @@ import { BUDGET } from '../data/meeting';
 export const CATEGORIES: { id: CategoryId; label: string; description: string }[] = [
   { id: 'dining', label: '식사', description: '시장 한 끼부터 특별한 코스 요리까지' },
   { id: 'accommodation', label: '숙소 업그레이드', description: '더 넓은 객실에서 여유롭게 쉬어요' },
-  { id: 'performance', label: '공연', description: '오사카의 문화를 만나는 특별한 밤' },
+  { id: 'performance', label: '공연', description: '프랑스의 문화를 만나는 특별한 밤' },
   { id: 'activity', label: '액티비티', description: '직접 만들고, 타고, 도시를 탐험해요' },
   { id: 'shopping', label: '쇼핑', description: '함께 고르는 오래 남을 여행 기념품' },
 ];
