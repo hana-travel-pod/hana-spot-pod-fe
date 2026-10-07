@@ -4,7 +4,7 @@ import {
   Animated,
   BackHandler,
   Image,
-  ImageSourcePropType,
+  ImageProps,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -44,24 +44,25 @@ import {
 } from "./domain";
 
 import { palette as C } from "./theme";
+import { images } from "./images";
 
 const STATUS_COLORS = {
   confirmed: { text: C.green, background: C.mint, chart: C.green },
   discussing: { text: "#8A6100", background: "#FFF1BA", chart: "#E4B52F" },
   low: { text: C.muted, background: C.iconBackground, chart: C.muted },
 };
-const COMPANY_LOGOS: Record<string, ImageSourcePropType> = {
-  samsung: require("../reference/삼성전자.png"),
-  skhynix: require("../reference/SK하이닉스.png"),
-  naver: require("../reference/네이버.png"),
-  hyundai: require("../reference/현대자동차.png"),
+const COMPANY_LOGOS: Record<string, NonNullable<ImageProps["defaultSource"]>> = {
+  samsung: images.samsung,
+  skhynix: images.skhynix,
+  naver: images.naver,
+  hyundai: images.hyundai,
 };
 function CompanyLogo({ plan, large = false }: { plan: InvestmentPlan; large?: boolean }) {
   const source = COMPANY_LOGOS[plan.id];
   if (!source) return null;
   return (
     <View style={[s.companyLogo, large && s.planIconLarge, plan.id === "hyundai" && { backgroundColor: C.dark }]}>
-      <Image source={source} style={{ width: large ? 54 : 38, height: large ? 46 : 30 }} resizeMode="contain" accessibilityLabel={`${plan.name} 로고`} />
+      <Image source={source} defaultSource={source} fadeDuration={0} style={{ width: large ? 54 : 38, height: large ? 46 : 30 }} resizeMode="contain" accessibilityLabel={`${plan.name} 로고`} />
     </View>
   );
 }
@@ -407,6 +408,7 @@ export function InvestmentApp() {
   }, [votingEndsAt]);
   const [requestDialog, setRequestDialog] = useState<"confirm" | "sent">("confirm");
   const [requestOpen, setRequestOpen] = useState(false);
+  const requestImage = requestDialog === "sent" ? images.successMascot : images.requestMascot;
   const screen = stack[stack.length - 1];
   const opacity = useRef(new Animated.Value(1)).current;
   const scroll = useRef<ScrollView>(null);
@@ -590,7 +592,9 @@ export function InvestmentApp() {
                       </Copy>
                     </View>
                     <Image
-                      source={require("../assets/images/mascot-hd.png")}
+                      source={images.mascot}
+                      defaultSource={images.mascot}
+                      fadeDuration={0}
                       style={[
                         s.mascot,
                         width < 360 && { width: 68, height: 128 },
@@ -1090,7 +1094,9 @@ export function InvestmentApp() {
           <View style={[s.modalCard, s.requestCard]} accessibilityViewIsModal>
             <View style={s.requestIllustration}>
               <Image
-                source={requestDialog === "sent" ? require("../assets/images/mascot-success-white.png") : require("../reference/04.png")}
+                source={requestImage}
+                defaultSource={requestImage}
+                fadeDuration={0}
                 style={s.requestMascot}
                 resizeMode="contain"
                 accessibilityLabel={requestDialog === "sent" ? "승인 요청 알림 전송을 기뻐하는 하나 마스코트" : "함께 투자 결정을 고민하는 하나 마스코트"}

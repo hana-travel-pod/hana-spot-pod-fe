@@ -1,11 +1,15 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { useFonts } from "expo-font";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { InvestmentApp } from "./src/InvestmentApp";
 import { palette } from "./src/theme";
+import { preloadImages } from "./src/images";
 
 export default function App() {
+  useEffect(() => {
+    void preloadImages();
+  }, []);
   const [loaded, error] = useFonts({
     HanaRegular: require("./assets/fonts/Hana2-Regular.otf"),
     HanaMedium: require("./assets/fonts/Hana2-Medium.otf"),
